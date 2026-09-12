@@ -15,7 +15,7 @@ version = "1.7.3"
 
 [workspace.dependencies]
 atomic-write-file = "0.3"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 dirs = "6"
 hex = "0.4"
 hmac = "0.13"
