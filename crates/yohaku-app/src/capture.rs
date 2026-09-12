@@ -158,8 +158,8 @@ mod tests {
             "player".into(),
             "Player".into(),
             true,
-            Some(-1.0),      // 负 duration → None
-            Some(f64::NAN),  // 非有限 → None
+            Some(-1.0),     // 负 duration → None
+            Some(f64::NAN), // 非有限 → None
             None,
             None,
         );

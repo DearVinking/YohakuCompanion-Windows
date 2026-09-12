@@ -89,13 +89,11 @@ impl PrivacyPipeline {
         let settings = self.settings();
         let rules = self.rules();
 
-        let application = app
-            .filter(|_| settings.share_applications)
-            .and_then(|raw| match rules.resolve_application(&raw.application_key) {
+        let application = app.filter(|_| settings.share_applications).and_then(|raw| {
+            match rules.resolve_application(&raw.application_key) {
                 Decision::Hidden => None,
                 Decision::Visible { alias } => {
-                    let display_name =
-                        alias.unwrap_or_else(|| raw.display_name.trim().to_string());
+                    let display_name = alias.unwrap_or_else(|| raw.display_name.trim().to_string());
                     if display_name.is_empty() {
                         return None;
                     }
@@ -111,7 +109,8 @@ impl PrivacyPipeline {
                         window_title,
                     })
                 }
-            });
+            }
+        });
 
         let media = media
             .filter(|_| settings.share_media)
@@ -126,10 +125,7 @@ impl PrivacyPipeline {
                         return None;
                     }
                     let player_key_lower = raw.player_key.to_lowercase();
-                    let kind = if MUSIC_PLAYERS
-                        .iter()
-                        .any(|p| player_key_lower.contains(p))
-                    {
+                    let kind = if MUSIC_PLAYERS.iter().any(|p| player_key_lower.contains(p)) {
                         yohaku_protocol::presence::MediaKind::Music
                     } else {
                         yohaku_protocol::presence::MediaKind::Unknown
@@ -137,8 +133,8 @@ impl PrivacyPipeline {
                     let title = raw.title.clone().filter(|t| !t.is_empty());
                     let artist = raw.artist.clone().filter(|t| !t.is_empty());
                     let album = raw.album.clone().filter(|t| !t.is_empty());
-                    let player_display_name = Some(raw.player_display_name.trim().to_string())
-                        .filter(|p| !p.is_empty());
+                    let player_display_name =
+                        Some(raw.player_display_name.trim().to_string()).filter(|p| !p.is_empty());
                     let session_id = tracker.session_id(&crate::session::MediaIdentity {
                         kind,
                         title: title.clone(),
@@ -212,11 +208,18 @@ mod tests {
     fn app_visible_title_hidden_by_default() {
         let p = pipeline();
         let mut tracker = MediaSessionTracker::new();
-        let snap = p.capture(Some(&app("msedge.exe", "Microsoft Edge", Some("文档"))), None, &mut tracker);
+        let snap = p.capture(
+            Some(&app("msedge.exe", "Microsoft Edge", Some("文档"))),
+            None,
+            &mut tracker,
+        );
         let a = snap.application.unwrap();
         assert_eq!(a.display_name, "Microsoft Edge");
         assert_eq!(a.window_title, None); // 全局默认 hide
-        assert_eq!(snap.availability, yohaku_protocol::presence::Availability::Active);
+        assert_eq!(
+            snap.availability,
+            yohaku_protocol::presence::Availability::Active
+        );
     }
 
     #[test]
@@ -230,8 +233,15 @@ mod tests {
             ..Default::default()
         });
         let mut tracker = MediaSessionTracker::new();
-        let snap = p.capture(Some(&app("msedge.exe", "Edge", Some("文档 — 标题"))), None, &mut tracker);
-        assert_eq!(snap.application.unwrap().window_title.as_deref(), Some("文档 — 标题"));
+        let snap = p.capture(
+            Some(&app("msedge.exe", "Edge", Some("文档 — 标题"))),
+            None,
+            &mut tracker,
+        );
+        assert_eq!(
+            snap.application.unwrap().window_title.as_deref(),
+            Some("文档 — 标题")
+        );
     }
 
     #[test]
@@ -262,10 +272,18 @@ mod tests {
             share_window_titles: Some(true),
             ..Default::default()
         });
-        let snap = p.capture(Some(&app("secret.exe", "Secret", Some("top secret"))), None, &mut tracker);
+        let snap = p.capture(
+            Some(&app("secret.exe", "Secret", Some("top secret"))),
+            None,
+            &mut tracker,
+        );
         assert!(snap.application.is_none());
         // 别名覆盖显示名
-        let snap = p.capture(Some(&app("code.exe", "Visual Studio Code", None)), None, &mut tracker);
+        let snap = p.capture(
+            Some(&app("code.exe", "Visual Studio Code", None)),
+            None,
+            &mut tracker,
+        );
         assert_eq!(snap.application.unwrap().display_name, "码农机");
     }
 
@@ -281,7 +299,10 @@ mod tests {
         let snap = p.capture(Some(&app("a.exe", "A", None)), Some(&media()), &mut tracker);
         assert!(snap.application.is_none());
         assert!(snap.media.is_none());
-        assert_eq!(snap.availability, yohaku_protocol::presence::Availability::Idle);
+        assert_eq!(
+            snap.availability,
+            yohaku_protocol::presence::Availability::Idle
+        );
     }
 
     #[test]
@@ -290,30 +311,62 @@ mod tests {
         let mut tracker = MediaSessionTracker::new();
         // 暂停 → 不上报
         let paused = RawMediaState::new(
-            Some("t".into()), Some("a".into()), None, "spotify.exe".into(), "Spotify".into(),
-            false, Some(1.0), None, None, None,
+            Some("t".into()),
+            Some("a".into()),
+            None,
+            "spotify.exe".into(),
+            "Spotify".into(),
+            false,
+            Some(1.0),
+            None,
+            None,
+            None,
         );
         let snap = p.capture(None, Some(&paused), &mut tracker);
         assert!(snap.media.is_none());
 
         // 无标题无歌手 → 整体无效
         let blank = RawMediaState::new(
-            None, None, None, "spotify.exe".into(), "Spotify".into(),
-            true, Some(1.0), None, None, None,
+            None,
+            None,
+            None,
+            "spotify.exe".into(),
+            "Spotify".into(),
+            true,
+            Some(1.0),
+            None,
+            None,
+            None,
         );
         assert!(p.capture(None, Some(&blank), &mut tracker).media.is_none());
 
         // ignoreNullArtist
         let no_artist = RawMediaState::new(
-            Some("t".into()), None, None, "spotify.exe".into(), "Spotify".into(),
-            true, Some(1.0), None, None, None,
+            Some("t".into()),
+            None,
+            None,
+            "spotify.exe".into(),
+            "Spotify".into(),
+            true,
+            Some(1.0),
+            None,
+            None,
+            None,
         );
-        assert!(p.capture(None, Some(&no_artist), &mut tracker).media.is_some());
+        assert!(
+            p.capture(None, Some(&no_artist), &mut tracker)
+                .media
+                .is_some()
+        );
         p.update_settings(&SettingsPatch {
             ignore_null_artist: Some(true),
             ..Default::default()
         });
-        assert!(p.capture(None, Some(&no_artist), &mut tracker).media.is_none());
+        assert!(
+            p.capture(None, Some(&no_artist), &mut tracker)
+                .media
+                .is_none()
+        );
 
         // kind 识别
         let snap = p.capture(None, Some(&media()), &mut tracker);
@@ -339,8 +392,16 @@ mod tests {
         let p = PrivacyPipeline::new(Settings::default(), rules);
         let mut tracker = MediaSessionTracker::new();
         let m = RawMediaState::new(
-            Some("t".into()), Some("a".into()), None, "spotify.exe".into(), "Spotify".into(),
-            true, Some(1.0), None, None, None,
+            Some("t".into()),
+            Some("a".into()),
+            None,
+            "spotify.exe".into(),
+            "Spotify".into(),
+            true,
+            Some(1.0),
+            None,
+            None,
+            None,
         );
         assert!(p.capture(None, Some(&m), &mut tracker).media.is_none());
     }
@@ -368,8 +429,16 @@ mod tests {
     fn session_stable_across_captures() {
         let p = pipeline();
         let mut tracker = MediaSessionTracker::new();
-        let s1 = p.capture(None, Some(&media()), &mut tracker).media.unwrap().session_id;
-        let s2 = p.capture(None, Some(&media()), &mut tracker).media.unwrap().session_id;
+        let s1 = p
+            .capture(None, Some(&media()), &mut tracker)
+            .media
+            .unwrap()
+            .session_id;
+        let s2 = p
+            .capture(None, Some(&media()), &mut tracker)
+            .media
+            .unwrap()
+            .session_id;
         assert_eq!(s1, s2);
         let changed = RawMediaState::new(
             Some("另一首".into()),
@@ -383,7 +452,11 @@ mod tests {
             Some(Utc::now()),
             None,
         );
-        let s3 = p.capture(None, Some(&changed), &mut tracker).media.unwrap().session_id;
+        let s3 = p
+            .capture(None, Some(&changed), &mut tracker)
+            .media
+            .unwrap()
+            .session_id;
         assert_ne!(s1, s3);
     }
 }
