@@ -5306,7 +5306,7 @@ dependencies = [
 
 [[package]]
 name = "yohaku-app"
-version = "1.7.3"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "hex",
@@ -5326,7 +5326,7 @@ dependencies = [
 
 [[package]]
 name = "yohaku-companion"
-version = "1.7.3"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
@@ -5348,7 +5348,7 @@ dependencies = [
 
 [[package]]
 name = "yohaku-platform"
-version = "1.7.3"
+version = "0.1.0"
 dependencies = [
  "atomic-write-file",
  "chrono",
@@ -5363,7 +5363,7 @@ dependencies = [
 
 [[package]]
 name = "yohaku-protocol"
-version = "1.7.3"
+version = "0.1.0"
 dependencies = [
  "chrono",
  "serde",
@@ -5374,7 +5374,7 @@ dependencies = [
 
 [[package]]
 name = "yohaku-store"
-version = "1.7.3"
+version = "0.1.0"
 dependencies = [
  "atomic-write-file",
  "chrono",
