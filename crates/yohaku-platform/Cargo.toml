@@ -1,0 +1,17 @@
+[package]
+name = "yohaku-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+yohaku-store = { path = "../yohaku-store" }
+log.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+windows-sys.workspace = true
