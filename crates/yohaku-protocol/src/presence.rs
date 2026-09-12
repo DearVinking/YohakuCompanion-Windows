@@ -12,9 +12,10 @@ use crate::capabilities::CapabilityLimits;
 use crate::ids::{is_valid_identifier, is_valid_uuid};
 use crate::json::to_sorted_json;
 use crate::limits::{
-    unicode_scalar_len, valid_activity_key, valid_artwork_url, valid_public_https_url, UrlRejection,
-    MAX_SAFE_INTEGER,
+    unicode_scalar_len, valid_activity_key, valid_artwork_url, valid_public_https_url,
+    UrlRejection,
 };
+use crate::MAX_SAFE_INTEGER;
 use crate::time::format_rfc3339_millis;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -311,10 +312,10 @@ impl Mapper {
         })
     }
 
-    fn build_application(
+    fn build_application<'a>(
         &self,
-        app: &ApplicationPart,
-    ) -> Result<ApplicationWire<'_>, MapperError> {
+        app: &'a ApplicationPart,
+    ) -> Result<ApplicationWire<'a>, MapperError> {
         if app.display_name.is_empty() || unicode_scalar_len(&app.display_name) > MAX_DISPLAY_NAME {
             return Err(MapperError::FieldTooLong("displayName"));
         }
@@ -351,12 +352,15 @@ impl Mapper {
         Ok(ApplicationWire {
             display_name: &app.display_name,
             activity,
-            window: app.window_title.as_deref().map(|t| WindowWire { title: t }),
+            window: match app.window_title.as_deref() {
+                Some(t) => Some(WindowWire { title: t }),
+                None => None,
+            },
             icon,
         })
     }
 
-    fn build_media(&self, media: &MediaPart) -> Result<MediaWire<'_>, MapperError> {
+    fn build_media<'a>(&self, media: &'a MediaPart) -> Result<MediaWire<'a>, MapperError> {
         if !is_valid_uuid(&media.session_id) {
             return Err(MapperError::FieldInvalid("sessionId"));
         }
@@ -435,7 +439,10 @@ impl Mapper {
             title: media.title.as_deref(),
             artist: media.artist.as_deref(),
             album: media.album.as_deref(),
-            player: media.player_display_name.as_deref().map(|p| PlayerWire { display_name: p }),
+            player: match media.player_display_name.as_deref() {
+                Some(p) => Some(PlayerWire { display_name: p }),
+                None => None,
+            },
             playback: PlaybackWire {
                 state,
                 duration_ms,
