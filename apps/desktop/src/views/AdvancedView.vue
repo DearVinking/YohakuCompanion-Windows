@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+
 import { api, errorText } from "../api";
+import PillButton from "../design-system/components/PillButton.vue";
+import TextInput from "../design-system/components/TextInput.vue";
 import type { S3ConfigView } from "../api/types";
 
 const config = ref<S3ConfigView | null>(null);
@@ -37,28 +40,70 @@ onMounted(load);
 </script>
 
 <template>
-    <div v-if="config">
-        <div class="card">
-            <h3>S3 资产托管（应用图标 / 媒体封面公网 URL）</h3>
-            <div class="row"><span class="grow">Endpoint（自定义时走 path-style，留空用 AWS 虚拟主机式）</span></div>
-            <div class="row"><input type="text" v-model="config.endpoint" placeholder="如 file.example.com" /></div>
-            <div class="row"><span class="grow">Bucket</span></div>
-            <div class="row"><input type="text" v-model="config.bucket" /></div>
-            <div class="row"><span class="grow">Region</span></div>
-            <div class="row"><input type="text" v-model="config.region" /></div>
-            <div class="row"><span class="grow">自定义公网域（可选，优先于 endpoint）</span></div>
-            <div class="row"><input type="text" v-model="config.customDomain" placeholder="如 cdn.example.com" /></div>
-            <div class="row"><span class="grow">对象键前缀</span></div>
-            <div class="row"><input type="text" v-model="config.basePath" placeholder="app-icons" /></div>
-            <div class="row"><span class="grow">Access Key</span></div>
-            <div class="row"><input type="text" v-model="config.accessKey" /></div>
-            <div class="row"><span class="grow">Secret Key（{{ config.hasCredentials ? "已保存，留空保持不变" : "未设置" }}）</span></div>
-            <div class="row"><input type="password" v-model="secretKey" placeholder="输入新 Secret Key" /></div>
-            <div class="row">
-                <button class="primary" @click="save">{{ saved ? "已保存" : "保存" }}</button>
-                <span class="muted">凭据经 DPAPI 加密存储，导出/日志中不可见。</span>
-            </div>
-            <div class="error-text" v-if="error">{{ error }}</div>
+  <div v-if="config" class="mx-auto flex max-w-[860px] flex-col gap-4 py-4">
+    <section
+      class="rounded-2xl border border-gray-200 bg-white/50 p-5 backdrop-blur-md dark:border-white/20 dark:bg-black/30"
+    >
+      <div class="min-w-0">
+        <h2 class="type-heading">S3 资产托管</h2>
+        <div class="type-meta font-semibold text-secondary">
+          应用图标与媒体封面的公网 URL 来源
         </div>
-    </div>
+      </div>
+      <label class="mt-4 flex min-h-11 max-w-[420px] items-center gap-3">
+        <span class="w-[84px] flex-none type-body text-secondary">Endpoint</span>
+        <TextInput
+          :model-value="config.endpoint ?? ''"
+          @change="config.endpoint = ($event.target as HTMLInputElement).value || null"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="file.example.com（留空用 AWS 虚拟主机式）"
+          class="min-w-0 flex-1"
+        />
+      </label>
+      <label class="mt-2 flex min-h-11 max-w-[420px] items-center gap-3">
+        <span class="w-[84px] flex-none type-body text-secondary">Bucket</span>
+        <TextInput v-model="config.bucket" autocomplete="off" spellcheck="false" class="min-w-0 flex-1" />
+      </label>
+      <label class="mt-2 flex min-h-11 max-w-[420px] items-center gap-3">
+        <span class="w-[84px] flex-none type-body text-secondary">Region</span>
+        <TextInput v-model="config.region" autocomplete="off" spellcheck="false" class="min-w-0 flex-1" />
+      </label>
+      <label class="mt-2 flex min-h-11 max-w-[420px] items-center gap-3">
+        <span class="w-[84px] flex-none type-body text-secondary">公网域</span>
+        <TextInput
+          :model-value="config.customDomain ?? ''"
+          @change="config.customDomain = ($event.target as HTMLInputElement).value || null"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="cdn.example.com（可选）"
+          class="min-w-0 flex-1"
+        />
+      </label>
+      <label class="mt-2 flex min-h-11 max-w-[420px] items-center gap-3">
+        <span class="w-[84px] flex-none type-body text-secondary">键前缀</span>
+        <TextInput v-model="config.basePath" autocomplete="off" spellcheck="false" class="min-w-0 flex-1" />
+      </label>
+      <label class="mt-2 flex min-h-11 max-w-[420px] items-center gap-3">
+        <span class="w-[84px] flex-none type-body text-secondary">Access Key</span>
+        <TextInput v-model="config.accessKey" autocomplete="off" spellcheck="false" class="min-w-0 flex-1" />
+      </label>
+      <label class="mt-2 flex min-h-11 max-w-[420px] items-center gap-3">
+        <span class="w-[84px] flex-none type-body text-secondary">Secret Key</span>
+        <TextInput
+          v-model="secretKey"
+          type="password"
+          autocomplete="off"
+          spellcheck="false"
+          :placeholder="config.hasCredentials ? '已保存，留空保持不变' : '未设置'"
+          class="min-w-0 flex-1"
+        />
+      </label>
+      <div class="mt-4 flex flex-wrap items-center gap-2.5">
+        <PillButton primary @click="save">{{ saved ? "已保存" : "保存" }}</PillButton>
+        <span class="type-meta text-secondary">凭据经 DPAPI 加密存储。</span>
+      </div>
+      <div v-if="error" class="mt-3 type-body text-danger">{{ error }}</div>
+    </section>
+  </div>
 </template>
