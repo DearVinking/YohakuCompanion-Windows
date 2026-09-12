@@ -9,7 +9,8 @@ use std::path::Path;
 pub const SETTINGS_SCHEMA_VERSION: u32 = 1;
 pub const SETTING_FILE: &str = "settings.json";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub schema_version: u32,
     /// 「应用程序」源
@@ -44,7 +45,8 @@ impl Default for Settings {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct SettingsPatch {
     pub share_applications: Option<bool>,
     pub share_window_titles: Option<bool>,

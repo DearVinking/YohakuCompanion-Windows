@@ -69,9 +69,10 @@ fn read_foreground(sample: &SharedSample<FocusSample>) -> bool {
             file_description(&exe_path).unwrap_or_else(|| fallback_display_name(&exe_path));
         let window_title = read_window_title(hwnd);
         let new_sample = FocusSample {
-            application_key,
+            application_key: application_key.clone(),
             display_name,
             window_title,
+            exe_path: exe_path.clone(),
         };
         let mut guard = sample.lock().unwrap();
         let changed = guard.as_ref() != Some(&new_sample);

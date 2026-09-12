@@ -19,6 +19,8 @@ pub struct FocusSample {
     pub application_key: String,
     pub display_name: String,
     pub window_title: Option<String>,
+    /// 完整 exe 路径（图标提取用；不进入净化快照）
+    pub exe_path: String,
 }
 
 pub type SharedSample<T> = Arc<std::sync::Mutex<Option<T>>>;

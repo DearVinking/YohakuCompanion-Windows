@@ -11,7 +11,7 @@ use std::path::Path;
 pub const HISTORY_FILE: &str = "history.json";
 pub const HISTORY_CAP: usize = 1000;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncTrigger {
     SemanticChange,
@@ -20,7 +20,7 @@ pub enum SyncTrigger {
     Manual,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncState {
     Succeeded,
@@ -28,7 +28,7 @@ pub enum SyncState {
     Skipped,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncEvent {
     pub id: String,

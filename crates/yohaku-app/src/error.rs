@@ -21,7 +21,7 @@ pub enum AppError {
 }
 
 /// 命令边界错误：code 是前端分支依据（对齐 NTEye 的 ApiError 约定）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, specta::Type)]
 pub struct ApiError {
     pub code: String,
     pub message: String,

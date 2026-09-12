@@ -10,7 +10,7 @@ use std::path::Path;
 pub const PRIVACY_SCHEMA_VERSION: u32 = 1;
 pub const PRIVACY_FILE: &str = "privacy-rules.json";
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "lowercase")]
 pub enum Level {
     #[default]
@@ -20,7 +20,8 @@ pub enum Level {
 }
 
 /// 全局默认三开关（对齐 macOS：application=share / windowTitle=hide / media=share）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct GlobalDefaults {
     pub application: Level,
     pub window_title: Level,
@@ -37,7 +38,8 @@ impl Default for GlobalDefaults {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct AppRule {
     pub application: Level,
     pub window_title: Level,
@@ -48,12 +50,11 @@ pub struct AppRule {
 /// 键 = applicationKey（exe 文件名小写 / UWP AUMID 小写）。
 pub type AppRules = BTreeMap<String, AppRule>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
 pub struct PrivacyRules {
     pub schema_version: u32,
-    #[serde(default)]
     pub defaults: GlobalDefaults,
-    #[serde(default)]
     pub apps: AppRules,
 }
 
