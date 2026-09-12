@@ -991,8 +991,13 @@ dependencies = [
 name = "yohaku-platform"
 version = "1.7.3"
 dependencies = [
+ "atomic-write-file",
+ "chrono",
+ "image",
  "log",
+ "tempfile",
  "windows",
+ "windows-future",
  "windows-sys",
  "yohaku-store",
 ]

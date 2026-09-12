@@ -84,9 +84,9 @@ impl MediaSessionTracker {
                         .iter()
                         .min_by_key(|(_, (_, last_used))| *last_used)
                         .map(|(k, _)| *k)
-                    {
-                        self.sessions.remove(&oldest);
-                    }
+                {
+                    self.sessions.remove(&oldest);
+                }
                 let uuid = uuid::Uuid::new_v4();
                 self.sessions.insert(hash, (uuid, now));
                 uuid.to_string()

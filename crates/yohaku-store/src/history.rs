@@ -103,7 +103,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::new(3);
         for i in 0..5 {
-            store.append(dir.path(), event(&i.to_string(), SyncState::Succeeded)).unwrap();
+            store
+                .append(dir.path(), event(&i.to_string(), SyncState::Succeeded))
+                .unwrap();
         }
         let events = store.list(dir.path()).unwrap();
         assert_eq!(events.len(), 3);
@@ -115,7 +117,9 @@ mod tests {
     fn failed_events_have_no_summary() {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::default();
-        store.append(dir.path(), event("f", SyncState::Failed)).unwrap();
+        store
+            .append(dir.path(), event("f", SyncState::Failed))
+            .unwrap();
         let events = store.list(dir.path()).unwrap();
         assert_eq!(events[0].output_summary, None);
         assert_eq!(events[0].error_code.as_deref(), Some("SERVER"));
@@ -125,7 +129,9 @@ mod tests {
     fn clear_empties() {
         let dir = tempfile::tempdir().unwrap();
         let store = HistoryStore::default();
-        store.append(dir.path(), event("a", SyncState::Skipped)).unwrap();
+        store
+            .append(dir.path(), event("a", SyncState::Skipped))
+            .unwrap();
         store.clear(dir.path()).unwrap();
         assert!(store.list(dir.path()).unwrap().is_empty());
     }

@@ -1,8 +1,8 @@
 //! 一次性配对码流程的请求/响应（macOS 版 CompanionPairingClient 语义）。
 
+use crate::MAX_SAFE_INTEGER;
 use crate::ids::is_valid_identifier;
 use crate::json::{take_required, to_sorted_json};
-use crate::MAX_SAFE_INTEGER;
 
 pub const SCOPE_PRESENCE_WRITE: &str = "companion:presence:write";
 pub const ERR_PAIRING_EXPIRED: &str = "COMPANION_PAIRING_EXPIRED";
@@ -35,7 +35,10 @@ pub enum PairingError {
 
 /// 校验并返回 trim 后的 (pairingCode, deviceName)。
 /// macOS 版会对设备名做 NFC 规范化；Windows 端依赖服务端规范化，此处保持原样。
-pub fn validate_pairing_input(code: &str, device_name: &str) -> Result<(String, String), PairingError> {
+pub fn validate_pairing_input(
+    code: &str,
+    device_name: &str,
+) -> Result<(String, String), PairingError> {
     let code = code.trim();
     if code.is_empty() || code.chars().count() > MAX_PAIRING_CODE {
         return Err(PairingError::InvalidPairingCode);

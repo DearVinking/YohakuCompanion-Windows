@@ -53,9 +53,10 @@ impl RawMediaState {
         let duration_seconds = normalize_seconds(duration_seconds);
         let mut position_seconds = normalize_seconds(position_seconds);
         if let (Some(duration), Some(position)) = (duration_seconds, position_seconds)
-            && position > duration {
-                position_seconds = Some(duration);
-            }
+            && position > duration
+        {
+            position_seconds = Some(duration);
+        }
         RawMediaState {
             title,
             artist,

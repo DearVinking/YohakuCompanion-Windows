@@ -1,21 +1,23 @@
 //! 协调器状态机集成测试：假源/假传输/假时钟/假资产，直接驱动 step()。
 
+use chrono::{DateTime, TimeZone, Utc};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use yohaku_app::capture::{RawApplicationFocus, RawMediaState};
 use yohaku_app::coordinator::{
     Coordinator, CoordinatorDeps, LiveDeskEvent, MediaLookup, PresenceSources, StepOutcome,
 };
-use yohaku_app::ports::{Clock, HttpTransport, HttpRequest, HttpResponse, MonotonicClock, TransportError};
-use yohaku_app::capture::{RawApplicationFocus, RawMediaState};
+use yohaku_app::ports::{
+    Clock, HttpRequest, HttpResponse, HttpTransport, MonotonicClock, TransportError,
+};
 use yohaku_app::privacy::PrivacyPipeline;
 use yohaku_app::state::{CoordinatorState, LiveDeskStatus};
 use yohaku_protocol::sequencer::SequencePersistence;
 use yohaku_store::history::HistoryStore;
 use yohaku_store::settings::SettingsPatch;
 use yohaku_store::{ConnectionStore, SecretStore, StoreResult};
-use chrono::{DateTime, TimeZone, Utc};
 
 const DEVICE: &str = "11111111-1111-4111-8111-111111111111";
 const BASE: &str = "https://core.example.com";
@@ -98,7 +100,10 @@ impl HttpTransport for ScriptedHttp {
     fn send(&self, request: HttpRequest) -> Result<HttpResponse, TransportError> {
         self.requests.lock().unwrap().push(request.clone());
         if request.method == "GET" {
-            return Ok(HttpResponse { status: 200, body: capabilities_body() });
+            return Ok(HttpResponse {
+                status: 200,
+                body: capabilities_body(),
+            });
         }
         if let Some(over) = self.put_override.lock().unwrap().take() {
             return Ok(over);
@@ -182,7 +187,13 @@ fn harness() -> Harness {
         Arc::new(MemorySecrets(Mutex::new(BTreeMap::new()))),
     ));
     connection
-        .install_pairing_claim(DEVICE, "token-1", &["companion:presence:write".into()], 5, BASE)
+        .install_pairing_claim(
+            DEVICE,
+            "token-1",
+            &["companion:presence:write".into()],
+            5,
+            BASE,
+        )
         .unwrap();
     connection
         .update_metadata(|m| m.is_live_desk_enabled = true)
@@ -206,7 +217,9 @@ fn harness() -> Harness {
         sources: sources.clone(),
         assets: Arc::new(FakeAssets),
         http: http.clone(),
-        clock: Arc::new(FixedClock(Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap())),
+        clock: Arc::new(FixedClock(
+            Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap(),
+        )),
         monotonic: monotonic.clone(),
         history: Arc::new(HistoryStore::default()),
         history_dir: history_dir.clone(),
@@ -228,8 +241,14 @@ fn harness() -> Harness {
 impl Harness {
     /// 标准上线序列：SettingsChanged → Connecting → tick 协商 → Active → tick 首发快照。
     fn bring_online(&mut self) {
-        assert_eq!(self.coordinator.step(Some(LiveDeskEvent::SettingsChanged)), StepOutcome::Continue);
-        assert_eq!(self.status.lock().unwrap().state, CoordinatorState::Connecting);
+        assert_eq!(
+            self.coordinator.step(Some(LiveDeskEvent::SettingsChanged)),
+            StepOutcome::Continue
+        );
+        assert_eq!(
+            self.status.lock().unwrap().state,
+            CoordinatorState::Connecting
+        );
         self.coordinator.step(None);
         assert_eq!(self.status.lock().unwrap().state, CoordinatorState::Active);
         let sent_before = self.http.requests.lock().unwrap().len();
@@ -269,8 +288,14 @@ fn full_lifecycle_online_send_and_history() {
     assert!(bodies[0].contains(r#""sampledAt":"2026-01-02T03:04:00.000Z""#));
     let history = HistoryStore::default().list(&h.history_dir).unwrap();
     assert_eq!(history.len(), 1);
-    assert_eq!(history[0].state, yohaku_store::history::SyncState::Succeeded);
-    assert_eq!(history[0].output_summary.as_deref(), Some("accepted seq 100"));
+    assert_eq!(
+        history[0].state,
+        yohaku_store::history::SyncState::Succeeded
+    );
+    assert_eq!(
+        history[0].output_summary.as_deref(),
+        Some("accepted seq 100")
+    );
 }
 
 #[test]
@@ -279,7 +304,8 @@ fn coalesces_multiple_semantic_events_into_one_send() {
     h.bring_online();
     let before = h.http.requests.lock().unwrap().len();
     h.coordinator.step(Some(LiveDeskEvent::AppChanged));
-    h.coordinator.step(Some(LiveDeskEvent::MediaSemanticChanged));
+    h.coordinator
+        .step(Some(LiveDeskEvent::MediaSemanticChanged));
     h.tick_after_interval();
     assert_eq!(h.http.requests.lock().unwrap().len(), before + 1);
 }
@@ -314,7 +340,10 @@ fn schema_rejection_triggers_renegotiation() {
     h.tick_after_interval();
     // 发送失败 → 立即进入重协商
     assert_eq!(h.status.lock().unwrap().state, CoordinatorState::Connecting);
-    assert_eq!(h.status.lock().unwrap().last_error_code.as_deref(), Some("SCHEMA_REJECTED"));
+    assert_eq!(
+        h.status.lock().unwrap().last_error_code.as_deref(),
+        Some("SCHEMA_REJECTED")
+    );
     // 下一个 tick 完成重协商 → Active
     h.coordinator.step(None);
     assert_eq!(h.status.lock().unwrap().state, CoordinatorState::Active);
@@ -329,13 +358,19 @@ fn schema_rejection_triggers_renegotiation() {
 fn pause_suspends_with_clear_and_resume_renegotiates() {
     let mut h = harness();
     h.bring_online();
-    h.pipeline.update_settings(&SettingsPatch { pause_sharing: Some(true), ..Default::default() });
+    h.pipeline.update_settings(&SettingsPatch {
+        pause_sharing: Some(true),
+        ..Default::default()
+    });
     h.coordinator.step(Some(LiveDeskEvent::SettingsChanged));
     assert_eq!(h.status.lock().unwrap().state, CoordinatorState::Suspended);
     let bodies = h.put_bodies();
     assert!(bodies.iter().any(|b| b.contains(r#""reason":"paused""#)));
     // 恢复 → 重协商 → Active
-    h.pipeline.update_settings(&SettingsPatch { pause_sharing: Some(false), ..Default::default() });
+    h.pipeline.update_settings(&SettingsPatch {
+        pause_sharing: Some(false),
+        ..Default::default()
+    });
     h.coordinator.step(Some(LiveDeskEvent::SettingsChanged));
     assert_eq!(h.status.lock().unwrap().state, CoordinatorState::Connecting);
     h.coordinator.step(None);
@@ -350,7 +385,8 @@ fn unavailable_media_uses_cache_with_stripped_timeline() {
     assert!(h.put_bodies()[0].contains(r#""positionMs":30000"#));
     // 媒体查询失败 → 缓存沿用但位置不上报
     *h.sources.media.lock().unwrap() = MediaLookup::Unavailable;
-    h.coordinator.step(Some(LiveDeskEvent::MediaSemanticChanged));
+    h.coordinator
+        .step(Some(LiveDeskEvent::MediaSemanticChanged));
     h.tick_after_interval();
     let bodies = h.put_bodies();
     let last = bodies.last().unwrap();
@@ -413,5 +449,3 @@ fn extract(body: &str, key: &str) -> String {
     let start = body.find(&needle).unwrap() + needle.len();
     body[start..start + 36].to_string()
 }
-
-

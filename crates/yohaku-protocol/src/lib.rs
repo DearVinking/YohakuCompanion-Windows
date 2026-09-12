@@ -7,9 +7,9 @@ pub mod json;
 pub mod limits;
 pub mod negotiator;
 pub mod pairing;
-pub mod sequencer;
 pub mod presence;
 pub mod semver;
+pub mod sequencer;
 pub mod time;
 
 pub const CLIENT_VERSION: &str = "1.7.3";

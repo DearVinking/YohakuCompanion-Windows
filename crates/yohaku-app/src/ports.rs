@@ -40,7 +40,6 @@ impl Clock for SystemClock {
     }
 }
 
-
 /// 单调时钟（毫秒）：限速/心跳/重试等待的计时基准。
 /// 独立于 Clock（墙上时间），测试可推进。
 pub trait MonotonicClock: Send + Sync {
@@ -53,7 +52,9 @@ pub struct RealMonotonic {
 
 impl RealMonotonic {
     pub fn new() -> Self {
-        RealMonotonic { start: Instant::now() }
+        RealMonotonic {
+            start: Instant::now(),
+        }
     }
 }
 

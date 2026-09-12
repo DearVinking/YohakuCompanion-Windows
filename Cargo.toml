@@ -20,7 +20,7 @@ dirs = "6"
 hex = "0.4"
 hmac = "0.13"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
-log = "0.4"
+log = { version = "0.4", features = ["std", "alloc"] }
 regex = "1"
 serde = "1"
 serde_json = "1"
@@ -38,14 +38,21 @@ ureq = "3.4"
 uuid = { version = "1", features = ["v4"] }
 windows = { version = "0.61", features = [
     "Foundation",
+    "Win32_System_Com",
     "Media_Control",
     "Networking_Connectivity",
     "Storage_Streams",
 ] }
+windows-future = "0.2"
 windows-sys = { version = "0.61", features = [
     "Win32_Foundation",
+    "Win32_Graphics_Gdi",
     "Win32_Security_Cryptography",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Shell",
     "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_LibraryLoader",
     "Win32_System_Power",
     "Win32_System_RemoteDesktop",
     "Win32_System_Threading",

@@ -2,14 +2,12 @@
 //! 序列号预留 → mapper 组包 → 单发送槽串行 → 歧义失败以同一
 //! sequence/requestId/body 立即重试一次；服务端 acceptedSequence 单调 reconcile。
 
-use crate::ports::{Clock, HttpTransport, HttpRequest, HttpResponse, TransportError};
+use crate::ports::{Clock, HttpRequest, HttpResponse, HttpTransport, TransportError};
 use std::sync::{Arc, Mutex};
-use yohaku_protocol::error::{parse_error, parse_mutation, MutationResponse};
-use yohaku_protocol::presence::{
-    ClearReason, Mapper, MapperError, PresenceSnapshotInput,
-};
-use yohaku_protocol::sequencer::Sequencer;
 use yohaku_protocol::CLIENT_VERSION;
+use yohaku_protocol::error::{MutationResponse, parse_error, parse_mutation};
+use yohaku_protocol::presence::{ClearReason, Mapper, MapperError, PresenceSnapshotInput};
+use yohaku_protocol::sequencer::Sequencer;
 
 pub const ERR_SCHEMA_UNSUPPORTED: &str = "COMPANION_SCHEMA_UNSUPPORTED";
 pub const ERR_FEATURE_UNAVAILABLE: &str = "COMPANION_FEATURE_UNAVAILABLE";
@@ -128,13 +126,9 @@ impl PresenceClient {
     ) -> Result<MutationResponse, PresenceError> {
         let request_id = uuid::Uuid::new_v4().to_string();
         let sequence = self.sequencer.reserve();
-        let body = self.mapper.build_clear(
-            &request_id,
-            &self.device_id,
-            sequence,
-            reason,
-            clock.now(),
-        )?;
+        let body =
+            self.mapper
+                .build_clear(&request_id, &self.device_id, sequence, reason, clock.now())?;
         self.perform(RequestPlan { request_id, body }, clock)
     }
 
@@ -147,13 +141,9 @@ impl PresenceClient {
     ) -> Result<MutationResponse, PresenceError> {
         let request_id = uuid::Uuid::new_v4().to_string();
         let sequence = self.sequencer.reserve();
-        let body = self.mapper.build_clear(
-            &request_id,
-            &self.device_id,
-            sequence,
-            reason,
-            clock.now(),
-        )?;
+        let body =
+            self.mapper
+                .build_clear(&request_id, &self.device_id, sequence, reason, clock.now())?;
         self.perform_bounded(RequestPlan { request_id, body }, clock, timeout_ms)
     }
 
@@ -168,10 +158,7 @@ impl PresenceClient {
                 "Authorization".to_string(),
                 format!("Bearer {}", self.token),
             ),
-            (
-                "Content-Type".to_string(),
-                "application/json".to_string(),
-            ),
+            ("Content-Type".to_string(), "application/json".to_string()),
             (
                 "X-Yohaku-Companion-Version".to_string(),
                 CLIENT_VERSION.to_string(),
@@ -187,7 +174,11 @@ impl PresenceClient {
     }
 
     /// 单发送槽 + 单次幂等重试（macOS 版 performWithSingleRetry 语义矩阵）。
-    fn perform(&self, plan: RequestPlan, _clock: &dyn Clock) -> Result<MutationResponse, PresenceError> {
+    fn perform(
+        &self,
+        plan: RequestPlan,
+        _clock: &dyn Clock,
+    ) -> Result<MutationResponse, PresenceError> {
         self.perform_bounded(plan, _clock, 10_000)
     }
 
@@ -237,22 +228,27 @@ impl PresenceClient {
         let server_error = parse_error(&response.body);
         // 任何带 acceptedSequence 的服务端错误先 reconcile（同槽内已串行）
         if let Some(error) = &server_error
-            && let Some(accepted) = error.accepted_sequence {
-                self.sequencer.reconcile(accepted);
-            }
+            && let Some(accepted) = error.accepted_sequence
+        {
+            self.sequencer.reconcile(accepted);
+        }
         if response.status == 426 {
             return Err(PresenceError::SchemaRejected);
         }
         if let Some(error) = &server_error
-            && (error.code == ERR_SCHEMA_UNSUPPORTED || error.code == ERR_FEATURE_UNAVAILABLE) {
-                return Err(PresenceError::SchemaRejected);
-            }
+            && (error.code == ERR_SCHEMA_UNSUPPORTED || error.code == ERR_FEATURE_UNAVAILABLE)
+        {
+            return Err(PresenceError::SchemaRejected);
+        }
         let retryable = server_error
             .as_ref()
             .map(|e| e.retryable)
             .unwrap_or(response.status >= 500);
         if retryable && response.status >= 500 {
-            return Err(PresenceError::Transport(format!("retryable {}", response.status)));
+            return Err(PresenceError::Transport(format!(
+                "retryable {}",
+                response.status
+            )));
         }
         // 不可重试的服务端错误/不可解析的非 2xx
         if let Some(error) = &server_error {
@@ -267,10 +263,10 @@ impl PresenceClient {
 
 #[cfg(test)]
 mod tests {
-    use yohaku_protocol::presence::Availability;
     use super::*;
     use chrono::{DateTime, TimeZone, Utc};
     use std::collections::VecDeque;
+    use yohaku_protocol::presence::Availability;
 
     const DEVICE: &str = "11111111-1111-4111-8111-111111111111";
 
@@ -307,7 +303,12 @@ mod tests {
     impl HttpTransport for Scripted {
         fn send(&self, request: HttpRequest) -> Result<HttpResponse, TransportError> {
             self.requests.lock().unwrap().push(request);
-            let step = self.steps.lock().unwrap().pop_front().expect("script exhausted");
+            let step = self
+                .steps
+                .lock()
+                .unwrap()
+                .pop_front()
+                .expect("script exhausted");
             match step {
                 Step::Fail => Err(TransportError("connection reset".into())),
                 Step::Json(status, body) => {
@@ -404,9 +405,21 @@ mod tests {
         let r = &requests[0];
         assert_eq!(r.method, "PUT");
         assert_eq!(r.url, "https://core.example.com/companion/presence");
-        assert!(r.headers.iter().any(|(k, v)| k == "Authorization" && v == "Bearer token-1"));
-        assert!(r.headers.iter().any(|(k, v)| k == "X-Yohaku-Companion-Version" && v == "1.7.3"));
-        assert!(r.headers.iter().any(|(k, v)| k == "Content-Type" && v == "application/json"));
+        assert!(
+            r.headers
+                .iter()
+                .any(|(k, v)| k == "Authorization" && v == "Bearer token-1")
+        );
+        assert!(
+            r.headers
+                .iter()
+                .any(|(k, v)| k == "X-Yohaku-Companion-Version" && v == "1.7.3")
+        );
+        assert!(
+            r.headers
+                .iter()
+                .any(|(k, v)| k == "Content-Type" && v == "application/json")
+        );
     }
 
     #[test]
@@ -441,7 +454,9 @@ mod tests {
         ]);
         let c = client(http.clone());
         assert_eq!(
-            c.replace_presence(input(), &fixed_clock()).unwrap().accepted_sequence,
+            c.replace_presence(input(), &fixed_clock())
+                .unwrap()
+                .accepted_sequence,
             100
         );
         assert_eq!(http.requests.lock().unwrap().len(), 2);
@@ -461,7 +476,10 @@ mod tests {
 
     #[test]
     fn non_retryable_4xx_is_fatal() {
-        let http = scripted(vec![Step::Json(400, error_json("VALIDATION_FAILED", false, None))]);
+        let http = scripted(vec![Step::Json(
+            400,
+            error_json("VALIDATION_FAILED", false, None),
+        )]);
         let c = client(http);
         assert!(matches!(
             c.replace_presence(input(), &fixed_clock()),
@@ -489,11 +507,12 @@ mod tests {
     fn clear_presence_sends_clear_shape() {
         let http = scripted(vec![Step::Json(200, mutation_ok())]);
         let c = client(http.clone());
-        let mutation = c.clear_presence(ClearReason::Sleep, &fixed_clock()).unwrap();
+        let mutation = c
+            .clear_presence(ClearReason::Sleep, &fixed_clock())
+            .unwrap();
         assert_eq!(mutation.accepted_sequence, 100);
-        let body =
-            String::from_utf8(http.requests.lock().unwrap()[0].body.clone().expect("body"))
-                .unwrap();
+        let body = String::from_utf8(http.requests.lock().unwrap()[0].body.clone().expect("body"))
+            .unwrap();
         assert!(body.contains(r#""reason":"sleep""#));
     }
 }

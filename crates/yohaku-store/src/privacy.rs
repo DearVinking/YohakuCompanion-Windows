@@ -70,7 +70,9 @@ impl Default for PrivacyRules {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Decision {
     /// 可见；alias 为显式别名（可空）
-    Visible { alias: Option<String> },
+    Visible {
+        alias: Option<String>,
+    },
     Hidden,
 }
 
@@ -112,7 +114,8 @@ impl PrivacyRules {
 
     pub fn shares_window_title(&self, key: &str) -> bool {
         Self::resolve_level(
-            self.rule_for(key).map_or(Level::Inherit, |r| r.window_title),
+            self.rule_for(key)
+                .map_or(Level::Inherit, |r| r.window_title),
             self.defaults.window_title,
         )
     }
@@ -155,7 +158,10 @@ mod tests {
             Decision::Visible { alias: None }
         );
         assert!(!r.shares_window_title("unknown.exe")); // 默认 hide
-        assert!(matches!(r.resolve_media("unknown.exe"), Decision::Visible { .. }));
+        assert!(matches!(
+            r.resolve_media("unknown.exe"),
+            Decision::Visible { .. }
+        ));
     }
 
     #[test]
@@ -218,7 +224,10 @@ mod tests {
                 display_alias: None,
             },
         );
-        assert!(matches!(r.resolve_media("music.exe"), Decision::Visible { .. }));
+        assert!(matches!(
+            r.resolve_media("music.exe"),
+            Decision::Visible { .. }
+        ));
     }
 
     #[test]
@@ -236,6 +245,9 @@ mod tests {
         );
         r.save(dir.path()).unwrap();
         assert_eq!(PrivacyRules::load(dir.path()).unwrap(), r);
-        assert_eq!(PrivacyRules::load(&dir.path().join("nope")).unwrap_or_default(), PrivacyRules::default());
+        assert_eq!(
+            PrivacyRules::load(&dir.path().join("nope")).unwrap_or_default(),
+            PrivacyRules::default()
+        );
     }
 }

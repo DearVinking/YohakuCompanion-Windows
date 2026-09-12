@@ -8,14 +8,13 @@
 //! `application`/`media` 为「键存在、值可为 null」；仅 `artwork`/`link`
 //! 受能力标志门控——能力未启用时键整体缺失，启用后为 null 或对象。
 
+use crate::MAX_SAFE_INTEGER;
 use crate::capabilities::CapabilityLimits;
 use crate::ids::{is_valid_identifier, is_valid_uuid};
 use crate::json::to_sorted_json;
 use crate::limits::{
-    unicode_scalar_len, valid_activity_key, valid_artwork_url, valid_public_https_url,
-    UrlRejection,
+    UrlRejection, unicode_scalar_len, valid_activity_key, valid_artwork_url, valid_public_https_url,
 };
-use crate::MAX_SAFE_INTEGER;
 use crate::time::format_rfc3339_millis;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -320,17 +319,20 @@ impl Mapper {
             return Err(MapperError::FieldTooLong("displayName"));
         }
         if let Some(key) = &app.activity_key
-            && !valid_activity_key(key) {
-                return Err(MapperError::FieldInvalid("activityKey"));
-            }
+            && !valid_activity_key(key)
+        {
+            return Err(MapperError::FieldInvalid("activityKey"));
+        }
         if let Some(label) = &app.activity_custom_label
-            && unicode_scalar_len(label) > MAX_CUSTOM_LABEL {
-                return Err(MapperError::FieldTooLong("customLabel"));
-            }
+            && unicode_scalar_len(label) > MAX_CUSTOM_LABEL
+        {
+            return Err(MapperError::FieldTooLong("customLabel"));
+        }
         if let Some(title) = &app.window_title
-            && unicode_scalar_len(title) > MAX_WINDOW_TITLE {
-                return Err(MapperError::FieldTooLong("windowTitle"));
-            }
+            && unicode_scalar_len(title) > MAX_WINDOW_TITLE
+        {
+            return Err(MapperError::FieldTooLong("windowTitle"));
+        }
         let icon = match &app.icon_url {
             Some(url) => {
                 valid_public_https_url(url, &self.allowed_asset_hosts).map_err(asset_error)?;
@@ -364,14 +366,16 @@ impl Mapper {
             ("mediaAlbum", &media.album),
         ] {
             if let Some(v) = value
-                && unicode_scalar_len(v) > MAX_MEDIA_TEXT {
-                    return Err(MapperError::FieldTooLong(name));
-                }
+                && unicode_scalar_len(v) > MAX_MEDIA_TEXT
+            {
+                return Err(MapperError::FieldTooLong(name));
+            }
         }
         if let Some(player) = &media.player_display_name
-            && unicode_scalar_len(player) > MAX_PLAYER_NAME {
-                return Err(MapperError::FieldTooLong("playerDisplayName"));
-            }
+            && unicode_scalar_len(player) > MAX_PLAYER_NAME
+        {
+            return Err(MapperError::FieldTooLong("playerDisplayName"));
+        }
         if !meaningful(&media.title) && !meaningful(&media.artist) {
             return Err(MapperError::IdentityMissing);
         }
@@ -431,7 +435,10 @@ impl Mapper {
             title: media.title.as_deref(),
             artist: media.artist.as_deref(),
             album: media.album.as_deref(),
-            player: media.player_display_name.as_deref().map(|p| PlayerWire { display_name: p }),
+            player: media
+                .player_display_name
+                .as_deref()
+                .map(|p| PlayerWire { display_name: p }),
             playback: PlaybackWire {
                 state,
                 duration_ms,
@@ -567,7 +574,10 @@ mod tests {
     }
 
     fn art_url() -> String {
-        format!("https://assets.example.com/m/current.png?v={}", "ab".repeat(32))
+        format!(
+            "https://assets.example.com/m/current.png?v={}",
+            "ab".repeat(32)
+        )
     }
 
     #[test]
@@ -650,7 +660,10 @@ mod tests {
         // 能力未启用：键整体缺失
         assert!(body_for(&media(false, None)).get("artwork").is_none());
         // 启用但本帧无封面：显式 null
-        assert_eq!(body_for(&media(true, None))["artwork"], serde_json::Value::Null);
+        assert_eq!(
+            body_for(&media(true, None))["artwork"],
+            serde_json::Value::Null
+        );
         // 启用且有封面
         assert!(body_for(&media(true, Some(art_url())))["artwork"]["url"].is_string());
     }

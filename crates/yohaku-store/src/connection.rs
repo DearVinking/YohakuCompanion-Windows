@@ -104,10 +104,7 @@ impl ConnectionStore {
     }
 
     /// 更新非敏感元数据（保持 token 不动）。
-    pub fn update_metadata(
-        &self,
-        update: impl FnOnce(&mut ConnectionMetadata),
-    ) -> StoreResult<()> {
+    pub fn update_metadata(&self, update: impl FnOnce(&mut ConnectionMetadata)) -> StoreResult<()> {
         let mut metadata = self
             .load_metadata()?
             .ok_or_else(|| StoreError::Other("not paired".into()))?;
@@ -191,7 +188,10 @@ mod tests {
         assert!(!raw.contains("secret-token"));
         // enabled=false → fail-closed
         assert!(store.load_enabled_connection().unwrap().is_none());
-        assert_eq!(store.device_token().unwrap().as_deref(), Some("secret-token"));
+        assert_eq!(
+            store.device_token().unwrap().as_deref(),
+            Some("secret-token")
+        );
     }
 
     #[test]
@@ -199,7 +199,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = store(dir.path());
         store
-            .install_pairing_claim("11111111-1111-4111-8111-111111111111", "t", &[], 0, "https://x")
+            .install_pairing_claim(
+                "11111111-1111-4111-8111-111111111111",
+                "t",
+                &[],
+                0,
+                "https://x",
+            )
             .unwrap();
         store
             .update_metadata(|m| {
@@ -220,7 +226,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let store = store(dir.path());
         store
-            .install_pairing_claim("11111111-1111-4111-8111-111111111111", "t", &[], 0, "https://x")
+            .install_pairing_claim(
+                "11111111-1111-4111-8111-111111111111",
+                "t",
+                &[],
+                0,
+                "https://x",
+            )
             .unwrap();
         store.clear().unwrap();
         assert!(store.load_metadata().unwrap().is_none());

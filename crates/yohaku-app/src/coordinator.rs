@@ -4,27 +4,25 @@
 //! 通过 [`Coordinator::step`] 单步驱动，便于用假端口测试。
 
 use crate::capture::{
-    protocol_application_part, protocol_media_part, RawApplicationFocus, RawMediaState,
+    RawApplicationFocus, RawMediaState, protocol_application_part, protocol_media_part,
 };
-use crate::ports::{Clock, HttpTransport, HttpRequest, MonotonicClock, TransportError};
+use crate::ports::{Clock, HttpRequest, HttpTransport, MonotonicClock, TransportError};
 use crate::presence_client::{CapabilityFlags, PresenceClient, PresenceError};
 use crate::privacy::PrivacyPipeline;
-use crate::s3::{
-    effective_base_path, media_artwork_target, public_base_url, sign_put, S3Config,
-};
+use crate::s3::{S3Config, effective_base_path, media_artwork_target, public_base_url, sign_put};
 use crate::state::{CoordinatorState, LiveDeskStatus};
 use std::collections::HashMap;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Duration;
+use yohaku_protocol::CLIENT_VERSION;
 use yohaku_protocol::capabilities::CapabilityLimits;
-use yohaku_protocol::error::{parse_capabilities, ResponseError};
-use yohaku_protocol::negotiator::{negotiate, NegotiatedConfig, Negotiation};
+use yohaku_protocol::error::{ResponseError, parse_capabilities};
+use yohaku_protocol::negotiator::{NegotiatedConfig, Negotiation, negotiate};
 use yohaku_protocol::presence::{ClearReason, Mapper, PresenceSnapshotInput};
 use yohaku_protocol::sequencer::{SequencePersistence, Sequencer};
-use yohaku_protocol::CLIENT_VERSION;
-use yohaku_store::history::{HistoryStore, SyncEvent, SyncState, SyncTrigger};
 use yohaku_store::ConnectionStore;
+use yohaku_store::history::{HistoryStore, SyncEvent, SyncState, SyncTrigger};
 
 pub const DEFAULT_LEASE_REQUEST: i64 = 90;
 const RETRY_DELAY_SERVER_REJECTION: Duration = Duration::from_secs(300);
@@ -123,19 +121,31 @@ impl AssetHosting for S3AssetHosting {
         {
             let cache = self.artwork_cache.lock().unwrap();
             if let Some(((hash, fp), url)) = cache.as_ref()
-                && *hash == normalized.content_hash && *fp == fingerprint {
-                    return Some(url.clone());
-                }
+                && *hash == normalized.content_hash
+                && *fp == fingerprint
+            {
+                return Some(url.clone());
+            }
         }
         let target = media_artwork_target(&cfg, device_id, &normalized.content_hash);
-        let request =
-            sign_put(&cfg, &target, &normalized.png, "image/png", &[], self.clock.now()).ok()?;
+        let request = sign_put(
+            &cfg,
+            &target,
+            &normalized.png,
+            "image/png",
+            &[],
+            self.clock.now(),
+        )
+        .ok()?;
         let response = self.http.send(request).ok()?;
         if !(200..300).contains(&response.status) {
             return None;
         }
         let mut cache = self.artwork_cache.lock().unwrap();
-        *cache = Some(((normalized.content_hash, fingerprint), target.public_url.clone()));
+        *cache = Some((
+            (normalized.content_hash, fingerprint),
+            target.public_url.clone(),
+        ));
         Some(target.public_url)
     }
 
@@ -147,10 +157,16 @@ impl AssetHosting for S3AssetHosting {
         let provider = self.icon_provider.read().unwrap().clone()?;
         let png = provider.icon_png(application_key)?;
         let normalized = crate::artwork::normalize_artwork(&png).ok()?;
-        let target =
-            crate::s3::application_icon_target(&cfg, &normalized.content_hash);
-        let request =
-            sign_put(&cfg, &target, &normalized.png, "image/png", &[], self.clock.now()).ok()?;
+        let target = crate::s3::application_icon_target(&cfg, &normalized.content_hash);
+        let request = sign_put(
+            &cfg,
+            &target,
+            &normalized.png,
+            "image/png",
+            &[],
+            self.clock.now(),
+        )
+        .ok()?;
         let response = self.http.send(request).ok()?;
         if !(200..300).contains(&response.status) {
             return None;
@@ -161,14 +177,16 @@ impl AssetHosting for S3AssetHosting {
     }
 
     fn allowed_hosts(&self) -> Vec<String> {
-        self.config().map(|cfg| {
-            let base = public_base_url(&cfg);
-            base.split("//")
-                .nth(1)
-                .and_then(|rest| rest.split('/').next())
-                .map(|host| vec![host.to_string()])
-                .unwrap_or_default()
-        }).unwrap_or_default()
+        self.config()
+            .map(|cfg| {
+                let base = public_base_url(&cfg);
+                base.split("//")
+                    .nth(1)
+                    .and_then(|rest| rest.split('/').next())
+                    .map(|host| vec![host.to_string()])
+                    .unwrap_or_default()
+            })
+            .unwrap_or_default()
     }
 }
 
@@ -208,8 +226,13 @@ pub struct CoordinatorDeps {
 enum Runtime {
     Disabled,
     Connecting,
-    Waiting { retry_at_ms: u64 },
-    Running { client: PresenceClient, config: NegotiatedConfig },
+    Waiting {
+        retry_at_ms: u64,
+    },
+    Running {
+        client: PresenceClient,
+        config: NegotiatedConfig,
+    },
     Suspended,
 }
 
@@ -281,20 +304,21 @@ impl Coordinator {
             Runtime::Disabled | Runtime::Suspended | Runtime::Connecting => {
                 Duration::from_secs(3600)
             }
-            Runtime::Waiting { retry_at_ms, .. } => Duration::from_millis(
-                retry_at_ms.saturating_sub(self.deps.monotonic.now_millis()),
-            ),
+            Runtime::Waiting { retry_at_ms, .. } => {
+                Duration::from_millis(retry_at_ms.saturating_sub(self.deps.monotonic.now_millis()))
+            }
             Runtime::Running { config, .. } => {
                 if self.refresh_requested {
                     Duration::from_millis(self.rate_limit_wait_ms(config))
                 } else {
                     Some(self.heartbeat_at_ms.unwrap_or_else(|| {
                         self.deps.monotonic.now_millis()
-                            + config.heartbeat_seconds(DEFAULT_LEASE_REQUEST) as u64
-                            * 1000
+                            + config.heartbeat_seconds(DEFAULT_LEASE_REQUEST) as u64 * 1000
                     }))
                     .map(|at_ms| {
-                        Duration::from_millis(at_ms.saturating_sub(self.deps.monotonic.now_millis()))
+                        Duration::from_millis(
+                            at_ms.saturating_sub(self.deps.monotonic.now_millis()),
+                        )
                     })
                     .unwrap_or(Duration::from_secs(15))
                 }
@@ -305,7 +329,9 @@ impl Coordinator {
     fn rate_limit_wait_ms(&self, config: &NegotiatedConfig) -> u64 {
         let min_interval_ms = config.minimum_send_interval_ms() as u64;
         self.last_send_started_ms
-            .map(|t| min_interval_ms.saturating_sub(self.deps.monotonic.now_millis().saturating_sub(t)))
+            .map(|t| {
+                min_interval_ms.saturating_sub(self.deps.monotonic.now_millis().saturating_sub(t))
+            })
             .unwrap_or(0)
     }
 
@@ -377,16 +403,14 @@ impl Coordinator {
                 };
                 if should_send {
                     // 取回所有权以便后续 &mut self 调用
-                    let (client, config) = match std::mem::replace(
-                        &mut self.runtime,
-                        Runtime::Connecting,
-                    ) {
-                        Runtime::Running { client, config } => (client, config),
-                        other => {
-                            self.runtime = other;
-                            return StepOutcome::Continue;
-                        }
-                    };
+                    let (client, config) =
+                        match std::mem::replace(&mut self.runtime, Runtime::Connecting) {
+                            Runtime::Running { client, config } => (client, config),
+                            other => {
+                                self.runtime = other;
+                                return StepOutcome::Continue;
+                            }
+                        };
                     self.refresh_requested = false;
                     self.last_send_started_ms = Some(self.deps.monotonic.now_millis());
                     self.heartbeat_at_ms = Some(
@@ -394,8 +418,7 @@ impl Coordinator {
                             + config.heartbeat_seconds(DEFAULT_LEASE_REQUEST) as u64 * 1000,
                     );
                     let outcome = self.send_snapshot(&client, &config);
-                    self.runtime =
-                        self.apply_send_outcome(outcome, client, config);
+                    self.runtime = self.apply_send_outcome(outcome, client, config);
                 }
             }
             Runtime::Suspended => {}
@@ -439,8 +462,12 @@ impl Coordinator {
 
     /// 能力协商：成功 → Running；失败 → Waiting。
     fn try_connect(&mut self) {
-        let Some((base_url, device_id, token)) =
-            self.deps.connection.load_enabled_connection().ok().flatten()
+        let Some((base_url, device_id, token)) = self
+            .deps
+            .connection
+            .load_enabled_connection()
+            .ok()
+            .flatten()
         else {
             self.runtime = Runtime::Disabled;
             self.set_status(|s| s.state = CoordinatorState::Disabled);
@@ -453,7 +480,10 @@ impl Coordinator {
         let (config, mapper) = match self.fetch_and_negotiate(&base_url) {
             Ok(pair) => pair,
             Err(NegotiationFailure::UpdateRequired) => {
-                self.wait_with(CoordinatorState::UpdateRequired, RETRY_DELAY_SERVER_REJECTION);
+                self.wait_with(
+                    CoordinatorState::UpdateRequired,
+                    RETRY_DELAY_SERVER_REJECTION,
+                );
                 return;
             }
             Err(NegotiationFailure::ServerRejection) => {
@@ -528,7 +558,10 @@ impl Coordinator {
             url: format!("{}/companion/capabilities", base_url.trim_end_matches('/')),
             headers: vec![
                 ("Accept".to_string(), "application/json".to_string()),
-                ("X-Yohaku-Companion-Version".to_string(), CLIENT_VERSION.to_string()),
+                (
+                    "X-Yohaku-Companion-Version".to_string(),
+                    CLIENT_VERSION.to_string(),
+                ),
             ],
             body: None,
             timeout_ms: 10_000,
@@ -568,11 +601,7 @@ impl Coordinator {
     }
 
     /// 捕获 → 资产 → PUT。
-    fn send_snapshot(
-        &mut self,
-        client: &PresenceClient,
-        config: &NegotiatedConfig,
-    ) -> SendOutcome {
+    fn send_snapshot(&mut self, client: &PresenceClient, config: &NegotiatedConfig) -> SendOutcome {
         let raw_app = self.deps.sources.current_application();
         let raw_media = match self.deps.sources.current_media() {
             MediaLookup::Session(state) => {
@@ -590,10 +619,11 @@ impl Coordinator {
             }),
         };
 
-        let snapshot =
-            self.deps
-                .pipeline
-                .capture(raw_app.as_ref(), raw_media.as_ref(), &mut self.session_tracker);
+        let snapshot = self.deps.pipeline.capture(
+            raw_app.as_ref(),
+            raw_media.as_ref(),
+            &mut self.session_tracker,
+        );
 
         let device_id = client.device_id().to_string();
         let icon_url = match (snapshot.application.as_ref(), raw_app.as_ref()) {
@@ -620,10 +650,9 @@ impl Coordinator {
                 .application
                 .as_ref()
                 .map(|app| protocol_application_part(app, icon_url)),
-            media: snapshot
-                .media
-                .as_ref()
-                .map(|media| protocol_media_part(media, artwork_url, config.supports_media_artwork)),
+            media: snapshot.media.as_ref().map(|media| {
+                protocol_media_part(media, artwork_url, config.supports_media_artwork)
+            }),
         };
 
         let started_at = self.deps.clock.now();
@@ -655,7 +684,9 @@ impl Coordinator {
                 (SyncState::Failed, Some("PAYLOAD_TOO_LARGE".into()), None)
             }
             Err(PresenceError::Transport(_)) => (SyncState::Failed, Some("TRANSPORT".into()), None),
-            Err(PresenceError::Server { code, .. }) => (SyncState::Failed, Some(code.clone()), None),
+            Err(PresenceError::Server { code, .. }) => {
+                (SyncState::Failed, Some(code.clone()), None)
+            }
             Err(PresenceError::Decode(_)) => (SyncState::Failed, Some("DECODE".into()), None),
         };
         let event = SyncEvent {
@@ -683,9 +714,7 @@ impl Coordinator {
                 self.set_status(|s| {
                     s.state = CoordinatorState::Active;
                     s.last_error_code = None;
-                    s.last_sent_at = Some(
-                        yohaku_protocol::time::format_rfc3339_millis(now),
-                    );
+                    s.last_sent_at = Some(yohaku_protocol::time::format_rfc3339_millis(now));
                 });
                 Runtime::Running { client, config }
             }

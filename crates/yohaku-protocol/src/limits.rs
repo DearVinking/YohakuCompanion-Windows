@@ -17,7 +17,9 @@ pub fn valid_activity_key(s: &str) -> bool {
         Some(c) if c.is_ascii_lowercase() => {}
         _ => return false,
     }
-    s.chars().skip(1).all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+    s.chars()
+        .skip(1)
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
         && s.len() <= MAX_ACTIVITY_KEY
 }
 
@@ -55,9 +57,7 @@ pub fn valid_public_https_url(
         return Err(UrlRejection::NotHttps);
     }
     let rest = url.strip_prefix("https://").ok_or(UrlRejection::NotHttps)?;
-    let authority_end = rest
-        .find(['/', '?', '#'])
-        .unwrap_or(rest.len());
+    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
     let authority = &rest[..authority_end];
     if authority.contains('@') {
         return Err(UrlRejection::HasUserinfo);
@@ -101,7 +101,9 @@ pub fn valid_artwork_url(url: &str) -> Result<(), UrlRejection> {
         return Err(UrlRejection::InvalidQuery);
     };
     let value_is_content_hash = value.len() == 64
-        && value.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
     if key != "v" || !value_is_content_hash {
         return Err(UrlRejection::InvalidQuery);
     }
@@ -136,7 +138,10 @@ mod tests {
     #[test]
     fn url_accepts_whitelisted_https() {
         let h = hosts();
-        assert!(valid_public_https_url("https://assets.example.com/icons/ab.png?v=deadbeef", &h).is_ok());
+        assert!(
+            valid_public_https_url("https://assets.example.com/icons/ab.png?v=deadbeef", &h)
+                .is_ok()
+        );
         assert!(valid_public_https_url("https://assets.example.com/", &h).is_ok());
         assert!(valid_public_https_url("https://assets.example.com:443/a.png", &h).is_ok());
     }
@@ -164,7 +169,9 @@ mod tests {
             Err(UrlRejection::TooLong)
         );
         // 反斜杠在浏览器里等价于斜杠，可被用来绕过 authority 解析
-        assert!(valid_public_https_url("https://evil.example.com\\@assets.example.com/", &h).is_err());
+        assert!(
+            valid_public_https_url("https://evil.example.com\\@assets.example.com/", &h).is_err()
+        );
         assert!(valid_public_https_url("https://assets.example.com/a b.png", &h).is_err());
     }
 

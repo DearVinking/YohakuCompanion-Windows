@@ -1,8 +1,8 @@
 //! JSON 原子读写（所有持久化文件的唯一写入口）。
 
 use crate::error::StoreResult;
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use std::io::Write;
 use std::path::Path;
 
@@ -37,9 +37,8 @@ pub fn read_json_opt<T: DeserializeOwned>(path: &Path) -> StoreResult<Option<T>>
 }
 
 pub fn read_json<T: DeserializeOwned>(path: &Path) -> StoreResult<T> {
-    read_json_opt(path)?.ok_or_else(|| {
-        crate::error::StoreError::Other(format!("missing file {}", path.display()))
-    })
+    read_json_opt(path)?
+        .ok_or_else(|| crate::error::StoreError::Other(format!("missing file {}", path.display())))
 }
 
 #[cfg(test)]

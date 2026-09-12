@@ -57,10 +57,7 @@ impl SemanticVersion {
                     }
                     pre_release.push(PreIdentifier::Numeric(id.parse().ok()?));
                 } else {
-                    if !id
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || b == b'-')
-                    {
+                    if !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
                         return None;
                     }
                     pre_release.push(PreIdentifier::Alphanumeric(id.to_string()));
@@ -88,15 +85,14 @@ impl Ord for SemanticVersion {
             .cmp(&other.major)
             .then(self.minor.cmp(&other.minor))
             .then(self.patch.cmp(&other.patch))
-            .then_with(|| match (self.pre_release.is_empty(), other.pre_release.is_empty()) {
-                (true, true) => Ordering::Equal,
-                (true, false) => Ordering::Greater, // 正式版 > 预发布版
-                (false, true) => Ordering::Less,
-                (false, false) => self
-                    .pre_release
-                    .iter()
-                    .cmp(other.pre_release.iter()),
-            })
+            .then_with(
+                || match (self.pre_release.is_empty(), other.pre_release.is_empty()) {
+                    (true, true) => Ordering::Equal,
+                    (true, false) => Ordering::Greater, // 正式版 > 预发布版
+                    (false, true) => Ordering::Less,
+                    (false, false) => self.pre_release.iter().cmp(other.pre_release.iter()),
+                },
+            )
     }
 }
 

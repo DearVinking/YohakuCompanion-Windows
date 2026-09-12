@@ -21,9 +21,10 @@ pub fn parse_rfc3339_millis(s: &str) -> Option<DateTime<Utc>> {
     if Iterator::zip(fixed.iter(), expected.iter()).any(|(i, e)| b[*i] != *e) {
         return None;
     }
-    if b.iter().enumerate().any(|(i, &c)| {
-        !fixed.contains(&i) && !c.is_ascii_digit()
-    }) {
+    if b.iter()
+        .enumerate()
+        .any(|(i, &c)| !fixed.contains(&i) && !c.is_ascii_digit())
+    {
         return None;
     }
     let naive: NaiveDateTime = NaiveDateTime::parse_from_str(s, FORMAT).ok()?;

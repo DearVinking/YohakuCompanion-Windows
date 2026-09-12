@@ -86,8 +86,11 @@ impl Settings {
         }
         if let Some(v) = preferred_players {
             // 全部 trim + 非空过滤；全空时保持原值（防止手滑清空）
-            let cleaned: Vec<String> =
-                v.iter().map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()).collect();
+            let cleaned: Vec<String> = v
+                .iter()
+                .map(|s| s.trim().to_lowercase())
+                .filter(|s| !s.is_empty())
+                .collect();
             if !cleaned.is_empty() {
                 self.preferred_players = cleaned;
             }
@@ -223,11 +226,7 @@ mod tests {
         s.save(dir.path()).unwrap();
         assert_eq!(Settings::load(dir.path()).unwrap(), s);
         // 手写缺字段文件
-        std::fs::write(
-            dir.path().join(SETTING_FILE),
-            r#"{"schema_version":1}"#,
-        )
-        .unwrap();
+        std::fs::write(dir.path().join(SETTING_FILE), r#"{"schema_version":1}"#).unwrap();
         let loaded = Settings::load(dir.path()).unwrap();
         assert_eq!(loaded, Settings::default());
     }

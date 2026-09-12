@@ -11,8 +11,8 @@
 //! 注意：serde_json 未启用 `preserve_order`，`Value::Object` 即 BTreeMap，
 //! 经 Value 往返即可得到全层级排序键。
 
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 pub fn to_sorted_json<T: Serialize>(v: &T) -> Result<String, serde_json::Error> {
     let value = serde_json::to_value(v)?;
@@ -101,10 +101,9 @@ mod tests {
 
     #[test]
     fn take_distinguishes_missing_null_and_value() {
-        let value: serde_json::Value = serde_json::from_str(
-            r#"{"req":7,"nullable":null,"inner":{"x":1},"opt":null}"#,
-        )
-        .unwrap();
+        let value: serde_json::Value =
+            serde_json::from_str(r#"{"req":7,"nullable":null,"inner":{"x":1},"opt":null}"#)
+                .unwrap();
         let map = value.as_object().unwrap();
 
         assert_eq!(take_required::<u32>(map, "req").unwrap(), 7);

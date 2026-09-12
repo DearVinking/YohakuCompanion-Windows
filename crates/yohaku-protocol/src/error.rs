@@ -1,10 +1,10 @@
 //! 协议响应解析（客户端所需的最小投影）。
 
+use crate::MAX_SAFE_INTEGER;
 use crate::ids::is_valid_identifier;
 use crate::json::take_nullable;
 use crate::json::take_required;
 use crate::presence::{PRESENCE_SCHEMA, PRESENCE_SCHEMA_VERSION};
-use crate::MAX_SAFE_INTEGER;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ResponseError {
@@ -26,12 +26,13 @@ pub struct ResponseMeta {
     pub server_time: String,
 }
 
-fn parse_meta(meta: &serde_json::Map<String, serde_json::Value>) -> Result<ResponseMeta, ResponseError> {
+fn parse_meta(
+    meta: &serde_json::Map<String, serde_json::Value>,
+) -> Result<ResponseMeta, ResponseError> {
     let schema: String = take_required(meta, "schema").map_err(ResponseError::Malformed)?;
     let schema_version: i64 =
         take_required(meta, "schemaVersion").map_err(ResponseError::Malformed)?;
-    let request_id: String =
-        take_required(meta, "requestId").map_err(ResponseError::Malformed)?;
+    let request_id: String = take_required(meta, "requestId").map_err(ResponseError::Malformed)?;
     let server_time: String =
         take_required(meta, "serverTime").map_err(ResponseError::Malformed)?;
     if schema != PRESENCE_SCHEMA {
@@ -52,7 +53,10 @@ fn parse_meta(meta: &serde_json::Map<String, serde_json::Value>) -> Result<Respo
 fn envelope(body: &[u8]) -> Result<serde_json::Map<String, serde_json::Value>, ResponseError> {
     let value: serde_json::Value =
         serde_json::from_slice(body).map_err(|e| ResponseError::Malformed(e.to_string()))?;
-    value.as_object().cloned().ok_or_else(|| ResponseError::Malformed("not an object".into()))
+    value
+        .as_object()
+        .cloned()
+        .ok_or_else(|| ResponseError::Malformed("not an object".into()))
 }
 
 // ---------- Capabilities ----------
@@ -76,9 +80,7 @@ pub struct CapabilitiesData {
     pub limits: crate::capabilities::CapabilityLimits,
 }
 
-pub fn parse_capabilities(
-    body: &[u8],
-) -> Result<(ResponseMeta, CapabilitiesData), ResponseError> {
+pub fn parse_capabilities(body: &[u8]) -> Result<(ResponseMeta, CapabilitiesData), ResponseError> {
     let root = envelope(body)?;
     let meta_value = take_required::<serde_json::Map<String, serde_json::Value>>(&root, "meta")
         .map_err(ResponseError::Malformed)?;

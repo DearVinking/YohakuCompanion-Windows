@@ -28,8 +28,7 @@ pub fn is_valid_identifier(s: &str) -> bool {
         return true;
     }
     let b = s.as_bytes();
-    b.len() == CROCKFORD_LEN
-        && b.iter().all(|c| CROCKFORD_ALPHABET.contains(c))
+    b.len() == CROCKFORD_LEN && b.iter().all(|c| CROCKFORD_ALPHABET.contains(c))
 }
 
 #[cfg(test)]

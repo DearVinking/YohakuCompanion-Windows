@@ -137,7 +137,10 @@ mod tests {
 
     #[test]
     fn client_too_old() {
-        assert_eq!(negotiate(&caps(), "1.7.2"), Negotiation::ClientUpdateRequired);
+        assert_eq!(
+            negotiate(&caps(), "1.7.2"),
+            Negotiation::ClientUpdateRequired
+        );
     }
 
     #[test]
@@ -171,7 +174,10 @@ mod tests {
 
     #[test]
     fn invalid_semver_is_invalid_capabilities_not_update_required() {
-        assert_eq!(negotiate(&caps(), "not-semver"), Negotiation::InvalidCapabilities);
+        assert_eq!(
+            negotiate(&caps(), "not-semver"),
+            Negotiation::InvalidCapabilities
+        );
         let mut c = caps();
         c.minimum_client_version = "bad".into();
         assert_eq!(negotiate(&c, "1.7.3"), Negotiation::InvalidCapabilities);
