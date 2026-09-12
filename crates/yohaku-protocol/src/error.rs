@@ -49,7 +49,7 @@ fn parse_meta(meta: &serde_json::Map<String, serde_json::Value>) -> Result<Respo
     })
 }
 
-fn envelope(body: &[u8]) -> Result<(serde_json::Map<String, serde_json::Value>), ResponseError> {
+fn envelope(body: &[u8]) -> Result<serde_json::Map<String, serde_json::Value>, ResponseError> {
     let value: serde_json::Value =
         serde_json::from_slice(body).map_err(|e| ResponseError::Malformed(e.to_string()))?;
     value.as_object().cloned().ok_or_else(|| ResponseError::Malformed("not an object".into()))

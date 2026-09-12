@@ -13,6 +13,7 @@ yohaku-protocol = { path = "../yohaku-protocol" }
 yohaku-store = { path = "../yohaku-store" }
 chrono.workspace = true
 hex.workspace = true
+specta.workspace = true
 hmac.workspace = true
 image.workspace = true
 log.workspace = true

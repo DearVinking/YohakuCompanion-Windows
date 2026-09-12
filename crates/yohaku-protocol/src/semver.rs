@@ -28,7 +28,7 @@ impl SemanticVersion {
             None => (core_pre, None),
         };
         let mut parts = core.split('.');
-        let mut parse_number = |s: Option<&str>| -> Option<u64> {
+        let parse_number = |s: Option<&str>| -> Option<u64> {
             let s = s?;
             if s.is_empty() || (s.len() > 1 && s.starts_with('0')) {
                 return None;

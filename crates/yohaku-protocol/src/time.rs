@@ -17,7 +17,7 @@ pub fn parse_rfc3339_millis(s: &str) -> Option<DateTime<Utc>> {
         return None;
     }
     let fixed = [4, 7, 10, 13, 16, 19, 23];
-    let expected = [b'-', b'-', b'T', b':', b':', b'.', b'Z'];
+    let expected = *b"--T::.Z";
     if Iterator::zip(fixed.iter(), expected.iter()).any(|(i, e)| b[*i] != *e) {
         return None;
     }

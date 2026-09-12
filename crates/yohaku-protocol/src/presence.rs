@@ -319,21 +319,18 @@ impl Mapper {
         if app.display_name.is_empty() || unicode_scalar_len(&app.display_name) > MAX_DISPLAY_NAME {
             return Err(MapperError::FieldTooLong("displayName"));
         }
-        if let Some(key) = &app.activity_key {
-            if !valid_activity_key(key) {
+        if let Some(key) = &app.activity_key
+            && !valid_activity_key(key) {
                 return Err(MapperError::FieldInvalid("activityKey"));
             }
-        }
-        if let Some(label) = &app.activity_custom_label {
-            if unicode_scalar_len(label) > MAX_CUSTOM_LABEL {
+        if let Some(label) = &app.activity_custom_label
+            && unicode_scalar_len(label) > MAX_CUSTOM_LABEL {
                 return Err(MapperError::FieldTooLong("customLabel"));
             }
-        }
-        if let Some(title) = &app.window_title {
-            if unicode_scalar_len(title) > MAX_WINDOW_TITLE {
+        if let Some(title) = &app.window_title
+            && unicode_scalar_len(title) > MAX_WINDOW_TITLE {
                 return Err(MapperError::FieldTooLong("windowTitle"));
             }
-        }
         let icon = match &app.icon_url {
             Some(url) => {
                 valid_public_https_url(url, &self.allowed_asset_hosts).map_err(asset_error)?;
@@ -352,10 +349,7 @@ impl Mapper {
         Ok(ApplicationWire {
             display_name: &app.display_name,
             activity,
-            window: match app.window_title.as_deref() {
-                Some(t) => Some(WindowWire { title: t }),
-                None => None,
-            },
+            window: app.window_title.as_deref().map(|t| WindowWire { title: t }),
             icon,
         })
     }
@@ -369,17 +363,15 @@ impl Mapper {
             ("mediaArtist", &media.artist),
             ("mediaAlbum", &media.album),
         ] {
-            if let Some(v) = value {
-                if unicode_scalar_len(v) > MAX_MEDIA_TEXT {
+            if let Some(v) = value
+                && unicode_scalar_len(v) > MAX_MEDIA_TEXT {
                     return Err(MapperError::FieldTooLong(name));
                 }
-            }
         }
-        if let Some(player) = &media.player_display_name {
-            if unicode_scalar_len(player) > MAX_PLAYER_NAME {
+        if let Some(player) = &media.player_display_name
+            && unicode_scalar_len(player) > MAX_PLAYER_NAME {
                 return Err(MapperError::FieldTooLong("playerDisplayName"));
             }
-        }
         if !meaningful(&media.title) && !meaningful(&media.artist) {
             return Err(MapperError::IdentityMissing);
         }
@@ -439,10 +431,7 @@ impl Mapper {
             title: media.title.as_deref(),
             artist: media.artist.as_deref(),
             album: media.album.as_deref(),
-            player: match media.player_display_name.as_deref() {
-                Some(p) => Some(PlayerWire { display_name: p }),
-                None => None,
-            },
+            player: media.player_display_name.as_deref().map(|p| PlayerWire { display_name: p }),
             playback: PlaybackWire {
                 state,
                 duration_ms,

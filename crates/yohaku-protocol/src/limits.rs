@@ -175,7 +175,7 @@ mod tests {
         assert!(valid_artwork_url(&ok).is_ok());
         assert!(valid_artwork_url("https://assets.example.com/m.png").is_err()); // 无 v
         assert!(valid_artwork_url(&format!("https://a.com/m.png?v={hash}&x=1")).is_err()); // 多参数
-        assert!(valid_artwork_url("https://a.com/m.png?v=AB".repeat(1).as_str()).is_err()); // 非 64 hex
+        assert!(valid_artwork_url("https://a.com/m.png?v=AB".to_string().as_str()).is_err()); // 非 64 hex
         let upper = format!("https://a.com/m.png?v={}", hash.to_uppercase());
         assert!(valid_artwork_url(&upper).is_err()); // 必须小写
         assert!(valid_artwork_url(&format!("https://a.com/m.png#x?v={hash}")).is_err()); // fragment

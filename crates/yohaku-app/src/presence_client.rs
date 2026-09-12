@@ -4,9 +4,9 @@
 
 use crate::ports::{Clock, HttpTransport, HttpRequest, HttpResponse, TransportError};
 use std::sync::{Arc, Mutex};
-use yohaku_protocol::error::{parse_error, parse_mutation, MutationResponse, ServerError};
+use yohaku_protocol::error::{parse_error, parse_mutation, MutationResponse};
 use yohaku_protocol::presence::{
-    Availability, ClearReason, Mapper, MapperError, PresenceSnapshotInput,
+    ClearReason, Mapper, MapperError, PresenceSnapshotInput,
 };
 use yohaku_protocol::sequencer::Sequencer;
 use yohaku_protocol::CLIENT_VERSION;
@@ -53,8 +53,9 @@ pub struct PresenceClient {
     base_url: String,
     device_id: String,
     token: String,
+    #[allow(dead_code)] // link 能力启用前仅留存
     flags: CapabilityFlags,
-    /// 单发送槽：心跳/媒体/生命周期操作串行化
+    #[allow(dead_code)] // 能力标志留存在客户端上，供后续 link 能力启用
     send_slot: Mutex<()>,
 }
 
@@ -87,6 +88,10 @@ impl PresenceClient {
 
     pub fn reconcile(&self, accepted: i64) {
         self.sequencer.reconcile(accepted);
+    }
+
+    pub fn device_id(&self) -> &str {
+        &self.device_id
     }
 
     fn build_plan(
@@ -133,7 +138,30 @@ impl PresenceClient {
         self.perform(RequestPlan { request_id, body }, clock)
     }
 
+    /// best-effort 清除：受限超时（睡眠/锁屏/关机路径，先到者赢）。
+    pub fn clear_presence_bounded(
+        &self,
+        reason: ClearReason,
+        clock: &dyn Clock,
+        timeout_ms: u64,
+    ) -> Result<MutationResponse, PresenceError> {
+        let request_id = uuid::Uuid::new_v4().to_string();
+        let sequence = self.sequencer.reserve();
+        let body = self.mapper.build_clear(
+            &request_id,
+            &self.device_id,
+            sequence,
+            reason,
+            clock.now(),
+        )?;
+        self.perform_bounded(RequestPlan { request_id, body }, clock, timeout_ms)
+    }
+
     fn request_for(&self, plan: &RequestPlan) -> HttpRequest {
+        self.request_for_with_timeout(plan, 10_000)
+    }
+
+    fn request_for_with_timeout(&self, plan: &RequestPlan, timeout_ms: u64) -> HttpRequest {
         let headers = vec![
             ("Accept".to_string(), "application/json".to_string()),
             (
@@ -154,14 +182,23 @@ impl PresenceClient {
             url: format!("{}/companion/presence", self.base_url),
             headers,
             body: Some(plan.body.clone().into_bytes()),
-            timeout_ms: 10_000,
+            timeout_ms,
         }
     }
 
     /// 单发送槽 + 单次幂等重试（macOS 版 performWithSingleRetry 语义矩阵）。
     fn perform(&self, plan: RequestPlan, _clock: &dyn Clock) -> Result<MutationResponse, PresenceError> {
+        self.perform_bounded(plan, _clock, 10_000)
+    }
+
+    fn perform_bounded(
+        &self,
+        plan: RequestPlan,
+        _clock: &dyn Clock,
+        timeout_ms: u64,
+    ) -> Result<MutationResponse, PresenceError> {
         let _slot = self.send_slot.lock().unwrap();
-        let request = self.request_for(&plan);
+        let request = self.request_for_with_timeout(&plan, timeout_ms);
         let result = self.attempt(&request, &plan.request_id);
         match result {
             Ok(response) => Ok(response),
@@ -199,19 +236,17 @@ impl PresenceClient {
         }
         let server_error = parse_error(&response.body);
         // 任何带 acceptedSequence 的服务端错误先 reconcile（同槽内已串行）
-        if let Some(error) = &server_error {
-            if let Some(accepted) = error.accepted_sequence {
+        if let Some(error) = &server_error
+            && let Some(accepted) = error.accepted_sequence {
                 self.sequencer.reconcile(accepted);
             }
-        }
         if response.status == 426 {
             return Err(PresenceError::SchemaRejected);
         }
-        if let Some(error) = &server_error {
-            if error.code == ERR_SCHEMA_UNSUPPORTED || error.code == ERR_FEATURE_UNAVAILABLE {
+        if let Some(error) = &server_error
+            && (error.code == ERR_SCHEMA_UNSUPPORTED || error.code == ERR_FEATURE_UNAVAILABLE) {
                 return Err(PresenceError::SchemaRejected);
             }
-        }
         let retryable = server_error
             .as_ref()
             .map(|e| e.retryable)
@@ -232,6 +267,7 @@ impl PresenceClient {
 
 #[cfg(test)]
 mod tests {
+    use yohaku_protocol::presence::Availability;
     use super::*;
     use chrono::{DateTime, TimeZone, Utc};
     use std::collections::VecDeque;

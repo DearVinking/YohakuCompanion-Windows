@@ -78,8 +78,8 @@ impl MediaSessionTracker {
                 uuid.to_string()
             }
             None => {
-                if self.sessions.len() >= self.capacity {
-                    if let Some(oldest) = self
+                if self.sessions.len() >= self.capacity
+                    && let Some(oldest) = self
                         .sessions
                         .iter()
                         .min_by_key(|(_, (_, last_used))| *last_used)
@@ -87,7 +87,6 @@ impl MediaSessionTracker {
                     {
                         self.sessions.remove(&oldest);
                     }
-                }
                 let uuid = uuid::Uuid::new_v4();
                 self.sessions.insert(hash, (uuid, now));
                 uuid.to_string()
