@@ -114,17 +114,18 @@ onBeforeUnmount(() => window.clearInterval(timer));
     <section
       class="rounded-2xl border border-gray-200 bg-white/50 p-5 backdrop-blur-md dark:border-white/20 dark:bg-black/30"
     >
-      <div class="min-w-0">
-        <h2 class="type-heading">连接状态</h2>
-        <div class="type-meta font-semibold text-secondary">Live Desk</div>
+      <div class="flex min-w-0 flex-wrap items-center gap-2.5">
+        <div class="mr-auto min-w-0">
+          <h2 class="type-heading">连接状态</h2>
+          <div class="type-meta font-semibold text-secondary">Live Desk</div>
+        </div>
+        <BadgeTag :kind="stateKind" class="flex-none">{{ stateText }}</BadgeTag>
       </div>
-      <div class="mt-4 flex flex-wrap items-center gap-2.5">
-        <BadgeTag :kind="stateKind">{{ stateText }}</BadgeTag>
-        <span
-          v-if="status?.coordinator.lastSentAt"
-          class="type-body text-secondary"
-          >最近发送：{{ new Date(status.coordinator.lastSentAt).toLocaleString() }}</span
-        >
+      <div
+        v-if="status?.coordinator.lastSentAt"
+        class="mt-3 type-body text-secondary"
+      >
+        最近发送：{{ new Date(status.coordinator.lastSentAt).toLocaleString() }}
       </div>
       <div
         v-if="status?.coordinator.lastErrorCode"

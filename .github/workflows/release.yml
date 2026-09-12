@@ -1,0 +1,218 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-desktop-windows:
+    name: Build Windows Desktop
+    runs-on: windows-latest
+    outputs:
+      tagName: ${{ steps.verify.outputs.tagName }}
+      installerPath: ${{ steps.assets.outputs.installerPath }}
+      installerAssetName: ${{ steps.assets.outputs.installerAssetName }}
+      portablePath: ${{ steps.assets.outputs.portablePath }}
+      portableAssetName: ${{ steps.assets.outputs.portableAssetName }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.98.1
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: . -> target
+
+      - name: Desktop install
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Build desktop app
+        working-directory: apps/desktop
+        run: pnpm exec tauri build
+
+      - name: Verify tag matches app version
+        id: verify
+        shell: pwsh
+        run: |
+          $tagName = "${{ github.ref_name }}"
+          $conf = Get-Content "apps/desktop/src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json
+          $expected = "v$($conf.version)"
+          if ($tagName -ne $expected) {
+              throw "Tag $tagName does not match app version $expected (tauri.conf.json). Update the tag or the app version."
+          }
+          "tagName=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Collect release assets
+        id: assets
+        shell: pwsh
+        run: |
+          $tagName = "${{ steps.verify.outputs.tagName }}"
+          $version = $tagName.TrimStart("v")
+
+          $installer = Get-ChildItem -Path "target" -Recurse -Filter "*-setup.exe" |
+              Where-Object { $_.FullName -like "*bundle/nsis*" } |
+              Select-Object -First 1
+          if (-not $installer) {
+              throw "NSIS installer not found under target/release/bundle/nsis."
+          }
+
+          $binary = Get-ChildItem -Path "target/release" -Filter "YohakuCompanion.exe" | Select-Object -First 1
+          if (-not $binary) {
+              throw "YohakuCompanion.exe not found under target/release."
+          }
+
+          $stage = "release-assets"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          $installerAssetName = $installer.Name
+          Copy-Item $installer.FullName -Destination "$stage/$installerAssetName"
+
+          $portableAssetName = "YohakuCompanion_${version}_x64-portable.zip"
+          Compress-Archive -Path $binary.FullName -DestinationPath "$stage/$portableAssetName"
+
+          "installerPath=$stage/$installerAssetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "installerAssetName=$installerAssetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "portablePath=$stage/$portableAssetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "portableAssetName=$portableAssetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Upload release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: windows-release-assets
+          path: |
+            ${{ steps.assets.outputs.installerPath }}
+            ${{ steps.assets.outputs.portablePath }}
+          if-no-files-found: error
+
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs:
+      - build-desktop-windows
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Download release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: windows-release-assets
+          path: release-assets
+
+      - name: Build release notes
+        shell: bash
+        env:
+          TAG_NAME: ${{ needs.build-desktop-windows.outputs.tagName }}
+          INSTALLER_ASSET_NAME: ${{ needs.build-desktop-windows.outputs.installerAssetName }}
+          PORTABLE_ASSET_NAME: ${{ needs.build-desktop-windows.outputs.portableAssetName }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+
+          previous_tag="$(git describe --tags --abbrev=0 "${TAG_NAME}^" 2>/dev/null || true)"
+          if [[ -n "$previous_tag" ]]; then
+            range="${previous_tag}..${TAG_NAME}"
+          else
+            range="$TAG_NAME"
+          fi
+
+          {
+            echo "### 更新日志 ${TAG_NAME}:"
+            commits="$(git log --pretty=format:'* %s (%an)' "$range" || true)"
+            if [[ -n "$commits" ]]; then
+              echo "$commits"
+            else
+              echo "* 暂无可列出的提交记录。"
+            fi
+            echo
+            echo "### 下载说明"
+            echo "* Windows 安装包：[${INSTALLER_ASSET_NAME}](https://github.com/${RELEASE_REPOSITORY}/releases/download/${TAG_NAME}/${INSTALLER_ASSET_NAME})"
+            echo "  * 下载后运行安装程序即可。"
+            echo "* Windows 便携版：[${PORTABLE_ASSET_NAME}](https://github.com/${RELEASE_REPOSITORY}/releases/download/${TAG_NAME}/${PORTABLE_ASSET_NAME})"
+            echo "  * 下载后解压，运行 \`YohakuCompanion.exe\` 即可，无需安装。"
+          } > release-notes.md
+
+      - name: Resolve release flags
+        id: flags
+        shell: bash
+        env:
+          TAG_NAME: ${{ needs.build-desktop-windows.outputs.tagName }}
+        run: |
+          set -euo pipefail
+
+          prerelease_flag=""
+          if [[ "$TAG_NAME" =~ -[0-9A-Za-z] ]]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          echo "prereleaseFlag=${prerelease_flag}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.build-desktop-windows.outputs.tagName }}
+          INSTALLER_PATH: ${{ needs.build-desktop-windows.outputs.installerPath }}
+          PORTABLE_PATH: ${{ needs.build-desktop-windows.outputs.portablePath }}
+          PRERELEASE_FLAG: ${{ steps.flags.outputs.prereleaseFlag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG_NAME" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists: $TAG_NAME" >&2
+            exit 1
+          fi
+
+          gh release create "$TAG_NAME" \
+            "release-assets/$(basename "$INSTALLER_PATH")" \
+            "release-assets/$(basename "$PORTABLE_PATH")" \
+            --repo "$RELEASE_REPOSITORY" \
+            --title "$TAG_NAME" \
+            --notes-file release-notes.md \
+            --verify-tag \
+            --latest \
+            $PRERELEASE_FLAG
+
+      - name: Clean up workflow artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/artifacts" --paginate --jq '.artifacts[].id' \
+            | while read -r artifact_id; do
+                gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${artifact_id}"
+                echo "deleted artifact ${artifact_id}"
+              done

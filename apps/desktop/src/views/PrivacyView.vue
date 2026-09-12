@@ -126,6 +126,7 @@ onMounted(load);
               @update:model-value="save"
             />
           </div>
+          <div class="h-5 w-px flex-none bg-gray-200/80 dark:bg-white/10" aria-hidden="true"></div>
           <div class="flex min-h-9 items-center gap-2">
             <span class="type-body text-secondary">标题</span>
             <SegmentedControl
@@ -134,6 +135,7 @@ onMounted(load);
               @update:model-value="save"
             />
           </div>
+          <div class="h-5 w-px flex-none bg-gray-200/80 dark:bg-white/10" aria-hidden="true"></div>
           <div class="flex min-h-9 items-center gap-2">
             <span class="type-body text-secondary">媒体</span>
             <SegmentedControl
@@ -142,6 +144,7 @@ onMounted(load);
               @update:model-value="save"
             />
           </div>
+          <div class="h-5 w-px flex-none bg-gray-200/80 dark:bg-white/10" aria-hidden="true"></div>
           <TextInput
             :model-value="ruleOf(key as string).displayAlias ?? ''"
             autocomplete="off"

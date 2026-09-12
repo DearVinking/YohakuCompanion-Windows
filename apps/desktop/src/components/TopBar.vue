@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Pause, Play } from "@lucide/vue";
+import { Radio, RadioOff } from "@lucide/vue";
 
 import RoundIconButton from "../design-system/components/RoundIconButton.vue";
 import { IconSidebarToggle } from "../design-system/icons";
@@ -41,8 +41,8 @@ defineEmits<{
         :aria-label="paused ? '恢复上报' : '暂停上报'"
         @click="$emit('togglePause')"
       >
-        <Play v-if="paused" :size="15" />
-        <Pause v-else :size="15" />
+        <Radio v-if="paused" :size="15" />
+        <RadioOff v-else :size="15" />
       </RoundIconButton>
     </div>
   </div>

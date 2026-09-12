@@ -46,8 +46,8 @@ defineEmits<{ navigate: [id: string] }>();
       "
       @click="$emit('navigate', item.id)"
     >
-      <span class="flex w-3.5 flex-none justify-center">
-        <component :is="item.icon" :size="12" />
+      <span class="flex w-5 flex-none justify-center">
+        <component :is="item.icon" :size="16" />
       </span>
       <span class="truncate type-body">{{ item.label }}</span>
     </button>
