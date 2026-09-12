@@ -1,6 +1,6 @@
 # Yohaku Companion for Windows
 
-一个 Windows 原生托盘应用：把**当前前台应用**与**正在播放的音乐**按 Companion Protocol v2 同步到 Yohaku Core 的 Live Desk。macOS 原版见 `YohakuCompanion-main/`（只读参考，不入库）。
+一个 Windows 原生托盘应用：把**当前前台应用**与**正在播放的音乐**按 Companion Protocol v2 同步到 Yohaku Core 的 Live Desk。应用图标取自 macOS 原版的 AppIcon.appiconset（1024×1024 源，脚本生成多尺寸 ICO/PNG）。
 
 ## 架构
 

@@ -30,6 +30,9 @@ importers:
       '@vitejs/plugin-vue':
         specifier: ^6.0.8
         version: 6.0.8(vite@8.3.0(jiti@2.7.0))(vue@3.5.42(typescript@6.0.3))
+      pngjs:
+        specifier: ^7.0.0
+        version: 7.0.0
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
@@ -623,6 +626,10 @@ packages:
     resolution: {integrity: sha512-qcJu88Q2IWqJsDD529JKMdwGm/dvInW4HvQnRwiH9JtihJvzGOscDtHE3x1pBKeUOTysQ8kVmLnJ2kJu7yhcGA==}
     engines: {node: '>=12'}
 
+  pngjs@7.0.0:
+    resolution: {integrity: sha512-LKWqWJRhstyYo9pGvgor/ivk2w94eSjE3RGVuzLGlr3NmD8bf7RcYGze1mNdEHRP6TRP6rMuDHk5t44hnTRyow==}
+    engines: {node: '>=14.19.0'}
+
   postcss@8.5.28:
     resolution: {integrity: sha512-RRuzqDtt5Y9h3quz5hWhK+TPnsmVs6WwSU6LkJMeY4HstUEDuYTG8UJSdawMRzmzAtV+KEoG8N3Qg2qLy5vM/A==}
     engines: {node: ^10 || ^12 || >=14}
@@ -1139,6 +1146,8 @@ snapshots:
   picocolors@1.1.1: {}
 
   picomatch@4.0.7: {}
+
+  pngjs@7.0.0: {}
 
   postcss@8.5.28:
     dependencies:

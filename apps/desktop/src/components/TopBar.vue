@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { Pause, Play } from "@lucide/vue";
 
-import IconButtonGroup from "../design-system/components/IconButtonGroup.vue";
 import RoundIconButton from "../design-system/components/RoundIconButton.vue";
 import { IconSidebarToggle } from "../design-system/icons";
 
@@ -27,26 +26,23 @@ defineEmits<{
     </div>
 
     <div class="flex flex-none items-center gap-2">
-      <IconButtonGroup>
-        <RoundIconButton
-          grouped
-          :title="paused ? '恢复上报' : '暂停上报'"
-          :aria-label="paused ? '恢复上报' : '暂停上报'"
-          @click="$emit('togglePause')"
-        >
-          <Play v-if="paused" :size="15" />
-          <Pause v-else :size="15" />
-        </RoundIconButton>
-      </IconButtonGroup>
-
       <RoundIconButton
-        primary
         title="显示/隐藏侧边栏"
         aria-label="显示/隐藏侧边栏"
         :aria-pressed="false"
         @click="$emit('toggleSidebar')"
       >
         <IconSidebarToggle />
+      </RoundIconButton>
+
+      <RoundIconButton
+        primary
+        :title="paused ? '恢复上报' : '暂停上报'"
+        :aria-label="paused ? '恢复上报' : '暂停上报'"
+        @click="$emit('togglePause')"
+      >
+        <Play v-if="paused" :size="15" />
+        <Pause v-else :size="15" />
       </RoundIconButton>
     </div>
   </div>
