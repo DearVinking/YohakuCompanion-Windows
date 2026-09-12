@@ -7,3 +7,5 @@ pub mod json_io;
 pub mod paths;
 pub mod privacy;
 pub mod settings;
+
+pub use error::{StoreError, StoreResult};
