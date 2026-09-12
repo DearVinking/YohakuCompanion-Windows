@@ -39,6 +39,8 @@ impl SecretStore for DpapiSecretStore {
         if !Self::key_is_safe(key) {
             return Err(StoreError::Other(format!("invalid secret key `{key}`")));
         }
+        // SAFETY: input 指向调用方提供的有效缓冲区；output 由 DPAPI 分配，
+        // 成功后读出内容并用 LocalFree 释放。
         unsafe {
             let input = CRYPT_INTEGER_BLOB {
                 cbData: value.len() as u32,
@@ -81,6 +83,8 @@ impl SecretStore for DpapiSecretStore {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(e.into()),
         };
+        // SAFETY: input 指向刚读入的密文缓冲区；output 由 DPAPI 分配，
+        // 成功后读出内容并用 LocalFree 释放。
         unsafe {
             let input = CRYPT_INTEGER_BLOB {
                 cbData: encrypted.len() as u32,

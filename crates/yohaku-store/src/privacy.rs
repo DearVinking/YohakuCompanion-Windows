@@ -82,10 +82,7 @@ impl PrivacyRules {
         match app_level {
             Level::Hide => false,
             Level::Share => true,
-            Level::Inherit => match default_level {
-                Level::Hide => false,
-                _ => true,
-            },
+            Level::Inherit => !matches!(default_level, Level::Hide),
         }
     }
 
@@ -93,41 +90,37 @@ impl PrivacyRules {
         self.apps.get(&key.to_lowercase())
     }
 
+    /// 逐应用 Level → Inherit 落到全局默认的统一入口。
+    fn visible(rule: Option<&AppRule>, select: impl Fn(&AppRule) -> Level, default: Level) -> bool {
+        Self::resolve_level(rule.map_or(Level::Inherit, select), default)
+    }
+
     pub fn resolve_application(&self, key: &str) -> Decision {
         let rule = self.rule_for(key);
-        let visible = Self::resolve_level(
-            rule.map_or(Level::Inherit, |r| r.application),
-            self.defaults.application,
-        );
-        if visible {
-            Decision::Visible {
-                alias: rule.and_then(|r| {
-                    r.display_alias.as_ref().and_then(|a| {
-                        let t = a.trim();
-                        (!t.is_empty()).then(|| t.to_string())
-                    })
-                }),
-            }
-        } else {
-            Decision::Hidden
+        if !Self::visible(rule, |r| r.application, self.defaults.application) {
+            return Decision::Hidden;
+        }
+        Decision::Visible {
+            alias: rule.and_then(|r| {
+                r.display_alias.as_ref().and_then(|a| {
+                    let t = a.trim();
+                    (!t.is_empty()).then(|| t.to_string())
+                })
+            }),
         }
     }
 
     pub fn shares_window_title(&self, key: &str) -> bool {
-        Self::resolve_level(
-            self.rule_for(key)
-                .map_or(Level::Inherit, |r| r.window_title),
+        Self::visible(
+            self.rule_for(key),
+            |r| r.window_title,
             self.defaults.window_title,
         )
     }
 
     pub fn resolve_media(&self, key: &str) -> Decision {
         let rule = self.rule_for(key);
-        let visible = Self::resolve_level(
-            rule.map_or(Level::Inherit, |r| r.media),
-            self.defaults.media,
-        );
-        if visible {
+        if Self::visible(rule, |r| r.media, self.defaults.media) {
             Decision::Visible { alias: None }
         } else {
             Decision::Hidden

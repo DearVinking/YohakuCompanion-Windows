@@ -129,11 +129,9 @@ impl ConnectionStore {
     /// 解除配对：先删 token，再删 metadata。
     pub fn clear(&self) -> StoreResult<()> {
         self.remove_device_token()?;
-        let path = self.dir.join(CONNECTION_FILE);
-        match std::fs::remove_file(&path) {
-            Ok(()) => Ok(()),
+        match std::fs::remove_file(self.dir.join(CONNECTION_FILE)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(e) => Err(e.into()),
+            other => other.map_err(StoreError::from),
         }
     }
 }

@@ -4,7 +4,7 @@
 use super::MediaSample;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -31,16 +31,6 @@ struct TrackedSession {
     updated_at: DateTime<Utc>,
     started_ms: u64,
     artwork_bytes: Option<Vec<u8>>,
-}
-
-impl TrackedSession {
-    /// 语义身份：变化即通知协调器刷新。
-    fn semantic_id(&self) -> String {
-        format!(
-            "{}|{:?}|{:?}|{:?}|{}|{:?}",
-            self.source, self.title, self.artist, self.album, self.playing, self.duration_seconds
-        )
-    }
 }
 
 /// 阻塞等待 WinRT 异步操作（自旋 + 超时兜底，专用于 MTA 线程）。
@@ -82,9 +72,11 @@ fn display_name_from_source(source: &str) -> String {
     let head = source.split('!').next().unwrap_or(source);
     let tail = head.rsplit(['\\', '/']).next().unwrap_or(head);
     let stem = tail.strip_suffix(".exe").unwrap_or(tail);
-    (!stem.is_empty())
-        .then(|| stem.to_string())
-        .unwrap_or_else(|| source.to_string())
+    if !stem.is_empty() {
+        stem.to_string()
+    } else {
+        source.to_string()
+    }
 }
 
 fn is_preferred(source: &str, preferred: &[String]) -> bool {
@@ -247,6 +239,8 @@ impl MediaMonitor {
         let thread = std::thread::Builder::new()
             .name("media-monitor".into())
             .spawn(move || {
+                // SAFETY: CoInitializeEx 在本线程初始化 MTA 套间；
+                // RPC_E_CHANGED_MODE 仅表示已有套间模型（继续运行）。
                 unsafe {
                     let hr = windows::Win32::System::Com::CoInitializeEx(
                         None,

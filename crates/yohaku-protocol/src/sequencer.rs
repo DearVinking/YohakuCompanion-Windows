@@ -1,7 +1,7 @@
 //! 设备序列号：发送前先持久化 next（崩溃只会留下合法空洞，永不复用），
 //! 服务端 acceptedSequence 单调 reconcile（macOS 版 CompanionPresenceSequencer 语义）。
 
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub trait SequencePersistence: Send + Sync {
     fn load_next(&self, device_id: &str) -> Option<i64>;
@@ -9,7 +9,7 @@ pub trait SequencePersistence: Send + Sync {
 }
 
 pub struct Sequencer {
-    persistence: std::sync::Arc<dyn SequencePersistence>,
+    persistence: Arc<dyn SequencePersistence>,
     device_id: String,
     next: Mutex<i64>,
 }
@@ -18,7 +18,7 @@ impl Sequencer {
     /// 种子 = max(pairing_next, persisted_next)：以较大者为准，
     /// 保证跨重装/重配对不复用任何已用过的序列号。
     pub fn new(
-        persistence: std::sync::Arc<dyn SequencePersistence>,
+        persistence: Arc<dyn SequencePersistence>,
         device_id: &str,
         pairing_next: i64,
     ) -> Self {
@@ -74,8 +74,8 @@ mod tests {
         }
     }
 
-    fn persistence() -> std::sync::Arc<MemoryPersistence> {
-        std::sync::Arc::new(MemoryPersistence(StdMutex::new(BTreeMap::new())))
+    fn persistence() -> Arc<MemoryPersistence> {
+        Arc::new(MemoryPersistence(StdMutex::new(BTreeMap::new())))
     }
 
     #[test]

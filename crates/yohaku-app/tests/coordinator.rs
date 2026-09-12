@@ -70,13 +70,12 @@ impl SequencePersistence for MemoryPersistence {
 }
 
 fn capabilities_body() -> Vec<u8> {
-    format!(
-        r#"{{"meta":{{"schema":"yohaku.companion.presence","schemaVersion":2,"requestId":"22222222-2222-4222-8222-222222222222","serverTime":"2026-01-02T03:04:05.000Z"}},
-"data":{{"minimumClientVersion":"1.7.3","presenceSchemaVersions":[2],"momentSchemaVersions":[1],
-"features":{{"liveDesk":true,"mediaTimeline":true,"moments":false,"readingSessions":true,"mediaArtwork":true}},
-"limits":{{"presencePayloadBytes":32768,"presenceRequestsPerMinute":10,"presenceLeaseMinSeconds":30,"presenceLeaseMaxSeconds":300,"recommendedHeartbeatSeconds":90,"maximumClockSkewSeconds":60}}}}}}"#
-    )
-    .into_bytes()
+    r#"{"meta":{"schema":"yohaku.companion.presence","schemaVersion":2,"requestId":"22222222-2222-4222-8222-222222222222","serverTime":"2026-01-02T03:04:05.000Z"},
+"data":{"minimumClientVersion":"1.7.3","presenceSchemaVersions":[2],"momentSchemaVersions":[1],
+"features":{"liveDesk":true,"mediaTimeline":true,"moments":false,"readingSessions":true,"mediaArtwork":true},
+"limits":{"presencePayloadBytes":32768,"presenceRequestsPerMinute":10,"presenceLeaseMinSeconds":30,"presenceLeaseMaxSeconds":300,"recommendedHeartbeatSeconds":90,"maximumClockSkewSeconds":60}}}"#
+        .as_bytes()
+        .to_vec()
 }
 
 fn mutation_ok(request_id: &str) -> HttpResponse {

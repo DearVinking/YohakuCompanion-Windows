@@ -1,6 +1,5 @@
 //! Win32 图标提取：SHGetFileInfoW → HICON → GetIconInfo/GetDIBits → RGBA → PNG。
 
-use windows_sys::Win32::Foundation::HWND;
 use windows_sys::Win32::Graphics::Gdi::{
     BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, DeleteObject, GetDC, GetDIBits, HBITMAP, HDC,
     HGDIOBJ, ReleaseDC,
@@ -11,6 +10,8 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{DestroyIcon, GetIconInfo, HICO
 /// 提取 exe 的 32×32 图标并编码为 PNG（BGRA → RGBA）。
 pub fn extract_png(exe_path: &str) -> Option<Vec<u8>> {
     let wide: Vec<u16> = exe_path.encode_utf16().chain([0]).collect();
+    // SAFETY: wide 以 NUL 结尾；hIcon 由 SHGetFileInfoW 成功返回，
+    // 在销毁前交给 icon_to_png 使用。
     unsafe {
         let mut info: SHFILEINFOW = std::mem::zeroed();
         let ok = SHGetFileInfoW(
@@ -29,10 +30,14 @@ pub fn extract_png(exe_path: &str) -> Option<Vec<u8>> {
     }
 }
 
+/// # Safety
+/// `hicon` 必须是有效的图标句柄。
 unsafe fn icon_to_png(hicon: HICON) -> Option<Vec<u8>> {
-    let mut icon_info: windows_sys::Win32::UI::WindowsAndMessaging::ICONINFO =
-        unsafe { std::mem::zeroed() };
+    // SAFETY: 调用方保证 hicon 有效；GDI 位图句柄在失败分支统一清理，
+    // 指针/长度参数均与缓冲区实际容量匹配。
     unsafe {
+        let mut icon_info: windows_sys::Win32::UI::WindowsAndMessaging::ICONINFO =
+            std::mem::zeroed();
         if GetIconInfo(hicon, &mut icon_info) == 0 {
             return None;
         }
@@ -49,7 +54,7 @@ unsafe fn icon_to_png(hicon: HICON) -> Option<Vec<u8>> {
             return None;
         }
         let hdc: HDC = GetDC(std::ptr::null_mut());
-        let mut probe: BITMAPINFO = unsafe { std::mem::zeroed() };
+        let mut probe: BITMAPINFO = std::mem::zeroed();
         probe.bmiHeader.biSize = std::mem::size_of::<BITMAPINFOHEADER>() as u32;
         if GetDIBits(
             hdc,
@@ -72,7 +77,7 @@ unsafe fn icon_to_png(hicon: HICON) -> Option<Vec<u8>> {
             ReleaseDC(std::ptr::null_mut(), hdc);
             return None;
         }
-        let mut bmi: BITMAPINFO = unsafe { std::mem::zeroed() };
+        let mut bmi: BITMAPINFO = std::mem::zeroed();
         bmi.bmiHeader = probe.bmiHeader;
         bmi.bmiHeader.biWidth = width as i32;
         bmi.bmiHeader.biHeight = -(height as i32); // top-down
@@ -93,7 +98,7 @@ unsafe fn icon_to_png(hicon: HICON) -> Option<Vec<u8>> {
             return None;
         }
         // BGRA → RGBA
-        for px in pixels.chunks_exact_mut(4) {
+        for px in pixels.as_chunks_mut::<4>().0 {
             px.swap(0, 2);
         }
         let img = image::RgbaImage::from_raw(width, height, pixels)?;

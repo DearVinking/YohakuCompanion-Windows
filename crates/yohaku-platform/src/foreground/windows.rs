@@ -40,17 +40,18 @@ unsafe extern "system" fn win_event_proc(
     _time: u32,
 ) {
     HOOK_CONTEXT.with(|ctx| {
-        if let Some(context) = ctx.borrow().as_ref() {
-            let changed = read_foreground(&context.sample);
-            if changed {
-                let _ = context.notify.send(());
-            }
+        if let Some(context) = ctx.borrow().as_ref()
+            && read_foreground(&context.sample)
+        {
+            let _ = context.notify.send(());
         }
     });
 }
 
 /// 读取前台窗口并更新样本；返回内容是否变化。
 fn read_foreground(sample: &SharedSample<FocusSample>) -> bool {
+    // SAFETY: hwnd 来自 GetForegroundWindow 并做了非空检查；
+    // 其余调用为只读 Win32 查询，句柄/缓冲区生命周期都在本函数内。
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_null() {
@@ -84,6 +85,7 @@ fn read_foreground(sample: &SharedSample<FocusSample>) -> bool {
 }
 
 fn process_image_path(pid: u32) -> Option<String> {
+    // SAFETY: process 句柄由 OpenProcess 成功返回；缓冲区容量与长度参数一致。
     unsafe {
         let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
         if process.is_null() {
@@ -99,6 +101,8 @@ fn process_image_path(pid: u32) -> Option<String> {
 }
 
 fn read_window_title(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<String> {
+    // SAFETY: hwnd 由调用方从 GetForegroundWindow 取得且有效；
+    // buf 容量（len+1）与 GetWindowTextW 的长度参数一致。
     unsafe {
         let len = GetWindowTextLengthW(hwnd);
         if len <= 0 {
@@ -117,6 +121,8 @@ fn read_window_title(hwnd: windows_sys::Win32::Foundation::HWND) -> Option<Strin
 /// 版本资源 FileDescription（Windows 桌面应用的常规显示名来源）。
 fn file_description(exe_path: &str) -> Option<String> {
     let wide: Vec<u16> = exe_path.encode_utf16().chain([0]).collect();
+    // SAFETY: data 缓冲区按 GetFileVersionInfoSizeW 返回的大小分配；
+    // from_raw_parts 读取的指针/长度均来自 VerQueryValueW 的成功输出。
     unsafe {
         let size = GetFileVersionInfoSizeW(wide.as_ptr(), std::ptr::null_mut());
         if size == 0 {
@@ -177,12 +183,14 @@ impl ForegroundMonitor {
                 });
                 // 启动即采样一次
                 HOOK_CONTEXT.with(|ctx| {
-                    if let Some(context) = ctx.borrow().as_ref() {
-                        if read_foreground(&context.sample) {
-                            let _ = context.notify.send(());
-                        }
+                    if let Some(context) = ctx.borrow().as_ref()
+                        && read_foreground(&context.sample)
+                    {
+                        let _ = context.notify.send(());
                     }
                 });
+                // SAFETY: 本线程为专用消息循环线程；钩子回调（OUTOFCONTEXT）
+                // 仅在本线程派发，HOOK_CONTEXT 已在上方初始化。
                 unsafe {
                     let hook = SetWinEventHook(
                         EVENT_SYSTEM_FOREGROUND,

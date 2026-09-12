@@ -100,11 +100,9 @@ impl Settings {
     }
 
     pub fn load(dir: &Path) -> StoreResult<Settings> {
-        let disk: Option<DiskSettings> = read_json_opt(&dir.join(SETTING_FILE))?;
-        Ok(match disk {
-            Some(disk) => disk.into(),
-            None => Settings::default(),
-        })
+        Ok(read_json_opt::<DiskSettings>(&dir.join(SETTING_FILE))?
+            .map(Settings::from)
+            .unwrap_or_default())
     }
 
     pub fn save(&self, dir: &Path) -> StoreResult<()> {
@@ -223,8 +221,10 @@ mod tests {
     #[test]
     fn roundtrip_with_defaults_for_missing_fields() {
         let dir = tempfile::tempdir().unwrap();
-        let mut s = Settings::default();
-        s.share_window_titles = true;
+        let s = Settings {
+            share_window_titles: true,
+            ..Settings::default()
+        };
         s.save(dir.path()).unwrap();
         assert_eq!(Settings::load(dir.path()).unwrap(), s);
         // 手写缺字段文件

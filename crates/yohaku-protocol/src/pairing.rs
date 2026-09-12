@@ -44,10 +44,7 @@ pub fn validate_pairing_input(
         return Err(PairingError::InvalidPairingCode);
     }
     let name = device_name.trim();
-    if name.is_empty() {
-        return Err(PairingError::InvalidDeviceName);
-    }
-    if name.chars().count() > MAX_DEVICE_NAME {
+    if name.is_empty() || name.chars().count() > MAX_DEVICE_NAME {
         return Err(PairingError::InvalidDeviceName);
     }
     Ok((code.to_string(), name.to_string()))

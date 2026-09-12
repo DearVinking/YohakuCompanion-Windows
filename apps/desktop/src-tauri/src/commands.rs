@@ -15,7 +15,7 @@ use yohaku_protocol::pairing::{
     PairingError, SCOPE_PRESENCE_WRITE, build_claim_body, parse_claim_response,
 };
 use yohaku_store::ConnectionMetadata;
-use yohaku_store::history::{SyncEvent, SyncState};
+use yohaku_store::history::SyncEvent;
 use yohaku_store::privacy::PrivacyRules;
 use yohaku_store::settings::{Settings, SettingsPatch};
 
@@ -56,15 +56,7 @@ pub fn update_settings(app: State<'_, App>, patch: SettingsPatch) -> Result<Sett
 #[tauri::command]
 #[specta::specta]
 pub fn set_paused(app: State<'_, App>, paused: bool) -> Result<Settings, ApiError> {
-    let settings = app.pipeline.update_settings(&SettingsPatch {
-        pause_sharing: Some(paused),
-        ..Default::default()
-    });
-    settings
-        .save(&app.data_dir)
-        .map_err(|e| api_err("STORE", e.to_string()))?;
-    app.send_event(LiveDeskEvent::SettingsChanged);
-    Ok(settings)
+    app.set_paused(paused)
 }
 
 // ---------- 隐私规则 ----------
@@ -116,15 +108,11 @@ pub fn get_connection_status(app: State<'_, App>) -> Result<ConnectionStatusView
         .load_metadata()
         .map_err(|e| api_err("STORE", e.to_string()))?;
     let coordinator = app.status.lock().unwrap().clone();
-    let consent_stale = match (
-        &metadata,
-        &metadata
-            .as_ref()
-            .and_then(|m| m.consent_fingerprint.clone()),
-    ) {
-        (Some(m), Some(fp)) => m.is_live_desk_enabled && *fp != app.pipeline.policy_fingerprint(),
-        _ => false,
-    };
+    // 已开启但策略指纹与当前不符 → 需要重新确认
+    let consent_stale = metadata.as_ref().is_some_and(|m| {
+        m.is_live_desk_enabled
+            && m.consent_fingerprint.as_ref() != Some(&app.pipeline.policy_fingerprint())
+    });
     Ok(ConnectionStatusView {
         paired: metadata.is_some(),
         base_url: metadata.as_ref().map(|m| m.base_url.clone()),
@@ -155,7 +143,7 @@ pub fn start_pairing(
 ) -> Result<PairingResultView, ApiError> {
     let (code, name) =
         yohaku_protocol::pairing::validate_pairing_input(&pairing_code, &device_name)
-            .map_err(|e| pairing_error(e))?;
+            .map_err(pairing_error)?;
     let base = server_url.trim_end_matches('/').to_string();
     // 1. 预检能力（无认证）
     let caps_request = yohaku_app::ports::HttpRequest {
@@ -197,7 +185,7 @@ pub fn start_pairing(
         }
     }
     // 2. 消费一次性配对码
-    let body = build_claim_body(&code, &name).map_err(|e| pairing_error(e))?;
+    let body = build_claim_body(&code, &name).map_err(pairing_error)?;
     let claim_request = yohaku_app::ports::HttpRequest {
         method: "POST",
         url: format!("{base}/companion/pairings/claim"),
@@ -219,7 +207,7 @@ pub fn start_pairing(
         }
         return Err(api_err("HTTP_ERROR", format!("status {}", response.status)));
     }
-    let claim = parse_claim_response(&response.body).map_err(|e| pairing_error(e))?;
+    let claim = parse_claim_response(&response.body).map_err(pairing_error)?;
     if !claim.scopes.iter().any(|s| s == SCOPE_PRESENCE_WRITE) {
         return Err(pairing_error(PairingError::MissingScope));
     }
@@ -317,7 +305,7 @@ pub struct PreviewView {
 pub fn get_preview(app: State<'_, App>) -> Result<PreviewView, ApiError> {
     let raw_app = app.sources.current_application();
     let raw_media = match app.sources.current_media() {
-        yohaku_app::coordinator::MediaLookup::Session(state) => Some(*state),
+        MediaLookup::Session(state) => Some(*state),
         _ => None,
     };
     let mut tracker = yohaku_app::session::MediaSessionTracker::new();
@@ -401,11 +389,9 @@ pub struct S3ConfigPatch {
     pub secret_key: Option<String>,
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn get_s3_config(app: State<'_, App>) -> Result<S3ConfigView, ApiError> {
-    let cfg = app.load_s3_config();
-    Ok(S3ConfigView {
+/// S3 配置 → 前端视图（secret 不出壳层，仅回 has_credentials）。
+fn s3_view(cfg: S3Config) -> S3ConfigView {
+    S3ConfigView {
         endpoint: cfg.endpoint,
         bucket: cfg.bucket,
         region: cfg.region,
@@ -413,7 +399,13 @@ pub fn get_s3_config(app: State<'_, App>) -> Result<S3ConfigView, ApiError> {
         base_path: cfg.base_path,
         access_key: cfg.access_key,
         has_credentials: !cfg.secret_key.is_empty(),
-    })
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn get_s3_config(app: State<'_, App>) -> Result<S3ConfigView, ApiError> {
+    Ok(s3_view(app.load_s3_config()))
 }
 
 #[tauri::command]
@@ -442,25 +434,17 @@ pub fn update_s3_config(
     if let Some(v) = patch.access_key {
         cfg.access_key = v.trim().to_string();
     }
-    if let Some(v) = patch.secret_key {
-        if !v.is_empty() {
-            cfg.secret_key = v;
-        }
+    if let Some(v) = patch.secret_key
+        && !v.is_empty()
+    {
+        cfg.secret_key = v;
     }
     app.save_s3_config(&cfg)
         .map_err(|e| api_err("STORE", e.to_string()))?;
     app.assets.set_config(Some(cfg.clone()));
     // 资产 host 白名单变化 → 协调器重协商
     app.send_event(LiveDeskEvent::SettingsChanged);
-    Ok(S3ConfigView {
-        endpoint: cfg.endpoint,
-        bucket: cfg.bucket,
-        region: cfg.region,
-        custom_domain: cfg.custom_domain,
-        base_path: cfg.base_path,
-        access_key: cfg.access_key,
-        has_credentials: !cfg.secret_key.is_empty(),
-    })
+    Ok(s3_view(cfg))
 }
 
 // ---------- 退出 ----------
@@ -468,9 +452,6 @@ pub fn update_s3_config(
 #[tauri::command]
 #[specta::specta]
 pub fn quit_app(app: tauri::AppHandle, state: State<'_, App>) -> Result<(), ApiError> {
-    let _ = state.events.send(LiveDeskEvent::Shutdown);
-    // 给 best-effort 清除留出时间（上限 500ms + 余量）
-    std::thread::sleep(std::time::Duration::from_millis(700));
-    app.exit(0);
+    crate::wiring::request_quit(&app, &state.events);
     Ok(())
 }

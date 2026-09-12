@@ -51,18 +51,3 @@ impl From<AppError> for ApiError {
         ApiError::new(code, e.to_string())
     }
 }
-
-impl From<StoreErrorAlias> for ApiError {
-    fn from(e: StoreErrorAlias) -> Self {
-        ApiError::new("STORE", e.0)
-    }
-}
-
-/// 避免在公共 API 中暴露 thiserror 类型别名的一层薄别名。
-pub struct StoreErrorAlias(pub String);
-
-impl From<yohaku_store::StoreError> for StoreErrorAlias {
-    fn from(e: yohaku_store::StoreError) -> Self {
-        StoreErrorAlias(e.to_string())
-    }
-}

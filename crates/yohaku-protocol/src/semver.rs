@@ -19,10 +19,7 @@ enum PreIdentifier {
 impl SemanticVersion {
     /// `X.Y.Z[-pre][+build]`；build 元数据不参与比较。
     pub fn parse(s: &str) -> Option<SemanticVersion> {
-        let (core_pre, _build) = match s.split_once('+') {
-            Some((a, b)) => (a, Some(b)),
-            None => (s, None),
-        };
+        let core_pre = s.split_once('+').map_or(s, |(core, _build)| core);
         let (core, pre) = match core_pre.split_once('-') {
             Some((a, b)) => (a, Some(b)),
             None => (core_pre, None),

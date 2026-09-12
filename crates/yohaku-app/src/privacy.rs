@@ -57,22 +57,26 @@ impl PrivacyPipeline {
     /// 隐私策略指纹：覆盖源开关、全局默认与逐应用规则的排序 JSON 的 SHA-256。
     /// 用于发布同意作废与协调器刷新触发。
     pub fn policy_fingerprint(&self) -> String {
+        let settings = self.settings.read().unwrap();
+        let rules = self.rules.read().unwrap();
         #[derive(serde::Serialize)]
-        struct Fingerprint {
+        struct Fingerprint<'a> {
             share_applications: bool,
             share_window_titles: bool,
             share_media: bool,
             ignore_null_artist: bool,
-            rules: PrivacyRules,
+            rules: &'a PrivacyRules,
         }
         let value = serde_json::to_value(&Fingerprint {
-            share_applications: self.settings.read().unwrap().share_applications,
-            share_window_titles: self.settings.read().unwrap().share_window_titles,
-            share_media: self.settings.read().unwrap().share_media,
-            ignore_null_artist: self.settings.read().unwrap().ignore_null_artist,
-            rules: self.rules.read().unwrap().clone(),
+            share_applications: settings.share_applications,
+            share_window_titles: settings.share_window_titles,
+            share_media: settings.share_media,
+            ignore_null_artist: settings.ignore_null_artist,
+            rules: &rules,
         })
         .expect("fingerprint is serializable");
+        drop(rules);
+        drop(settings);
         // serde_json Value::Object 是 BTreeMap → 键有序
         let canonical = serde_json::to_string(&value).expect("canonical json");
         let hash = Sha256::digest(canonical.as_bytes());

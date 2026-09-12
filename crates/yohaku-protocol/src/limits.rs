@@ -12,15 +12,11 @@ pub fn unicode_scalar_len(s: &str) -> usize {
 
 /// `^[a-z][a-z0-9.-]{0,63}$`
 pub fn valid_activity_key(s: &str) -> bool {
-    let mut chars = s.chars();
-    match chars.next() {
-        Some(c) if c.is_ascii_lowercase() => {}
-        _ => return false,
-    }
-    s.chars()
-        .skip(1)
-        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
-        && s.len() <= MAX_ACTIVITY_KEY
+    s.len() <= MAX_ACTIVITY_KEY
+        && s.starts_with(|c: char| c.is_ascii_lowercase())
+        && s.chars()
+            .skip(1)
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,23 +41,35 @@ impl fmt::Display for UrlRejection {
     }
 }
 
-/// https、无 userinfo、host 精确命中白名单、≤2048 字节、无控制字符与空白。
-pub fn valid_public_https_url(
-    url: &str,
-    allowed_hosts: &BTreeSet<String>,
-) -> Result<(), UrlRejection> {
+/// 两个 URL 校验的共同前置：≤2048 字节、无控制字符/空白/反斜杠、
+/// https scheme。返回去掉 `https://` 后的剩余部分。
+fn strip_https_prefix(url: &str) -> Result<&str, UrlRejection> {
     if url.len() > MAX_URL_BYTES {
         return Err(UrlRejection::TooLong);
     }
     if url.bytes().any(|b| b <= 0x20 || b == 0x7f || b == b'\\') {
         return Err(UrlRejection::NotHttps);
     }
-    let rest = url.strip_prefix("https://").ok_or(UrlRejection::NotHttps)?;
-    let authority_end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
-    let authority = &rest[..authority_end];
+    url.strip_prefix("https://").ok_or(UrlRejection::NotHttps)
+}
+
+/// authority 段（至首个 `/`、`?`、`#`），拒绝 userinfo。
+fn authority(rest: &str) -> Result<&str, UrlRejection> {
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..end];
     if authority.contains('@') {
         return Err(UrlRejection::HasUserinfo);
     }
+    Ok(authority)
+}
+
+/// https、无 userinfo、host 精确命中白名单、≤2048 字节、无控制字符与空白。
+pub fn valid_public_https_url(
+    url: &str,
+    allowed_hosts: &BTreeSet<String>,
+) -> Result<(), UrlRejection> {
+    let rest = strip_https_prefix(url)?;
+    let authority = authority(rest)?;
     let host = match authority.rsplit_once(':') {
         Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => host,
         _ => authority,
@@ -75,22 +83,12 @@ pub fn valid_public_https_url(
 /// 媒体封面前 URL：https、无 fragment、无 userinfo、≤2048 字节，
 /// 且查询串必须恰为一个参数 `v=<64 位小写 hex>`（归一化 PNG 内容 sha256）。
 pub fn valid_artwork_url(url: &str) -> Result<(), UrlRejection> {
-    if url.len() > MAX_URL_BYTES {
-        return Err(UrlRejection::TooLong);
-    }
-    if url.bytes().any(|b| b <= 0x20 || b == 0x7f || b == b'\\') {
-        return Err(UrlRejection::NotHttps);
-    }
-    let rest = url.strip_prefix("https://").ok_or(UrlRejection::NotHttps)?;
+    let rest = strip_https_prefix(url)?;
     if rest.contains('#') {
         return Err(UrlRejection::NotHttps);
     }
-    let authority_end = rest.find(['/', '?']).unwrap_or(rest.len());
-    let authority = &rest[..authority_end];
-    if authority.contains('@') {
-        return Err(UrlRejection::HasUserinfo);
-    }
-    let path_and_query = &rest[authority_end..];
+    let authority = authority(rest)?;
+    let path_and_query = &rest[authority.len()..];
     let Some((_path, query)) = path_and_query.split_once('?') else {
         return Err(UrlRejection::InvalidQuery);
     };

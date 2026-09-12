@@ -31,13 +31,14 @@ pub struct RawMediaState {
 }
 
 fn normalize_seconds(v: Option<f64>) -> Option<f64> {
-    match v {
-        Some(v) if v.is_finite() && v >= 0.0 => Some(v),
-        _ => None,
-    }
+    v.filter(|v| v.is_finite() && *v >= 0.0)
 }
 
 impl RawMediaState {
+    /// 构造时归一化时间线：非有限/负值 → None；position 超出 duration → 钳到 duration。
+    // 参数与平台媒体样本字段一一对应（10 个域字段），拆成参数对象反而
+    // 降低调用侧可读性，故保留长参数列表。
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         title: Option<String>,
         artist: Option<String>,

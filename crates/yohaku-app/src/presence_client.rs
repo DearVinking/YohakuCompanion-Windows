@@ -37,13 +37,6 @@ impl From<MapperError> for PresenceError {
     }
 }
 
-/// 协商完成后的能力快照（决定 artwork/link 键是否编码）。
-#[derive(Debug, Clone, Copy)]
-pub struct CapabilityFlags {
-    pub supports_media_artwork: bool,
-    pub supports_media_playback_links: bool,
-}
-
 pub struct PresenceClient {
     http: Arc<dyn HttpTransport>,
     mapper: Mapper,
@@ -51,9 +44,6 @@ pub struct PresenceClient {
     base_url: String,
     device_id: String,
     token: String,
-    #[allow(dead_code)] // link 能力启用前仅留存
-    flags: CapabilityFlags,
-    #[allow(dead_code)] // 能力标志留存在客户端上，供后续 link 能力启用
     send_slot: Mutex<()>,
 }
 
@@ -70,7 +60,6 @@ impl PresenceClient {
         base_url: String,
         device_id: String,
         token: String,
-        flags: CapabilityFlags,
     ) -> Self {
         PresenceClient {
             http,
@@ -79,7 +68,6 @@ impl PresenceClient {
             base_url: base_url.trim_end_matches('/').to_string(),
             device_id,
             token,
-            flags,
             send_slot: Mutex::new(()),
         }
     }
@@ -116,7 +104,7 @@ impl PresenceClient {
         clock: &dyn Clock,
     ) -> Result<MutationResponse, PresenceError> {
         let plan = self.build_plan(input, clock)?;
-        self.perform(plan, clock)
+        self.perform(plan)
     }
 
     pub fn clear_presence(
@@ -129,7 +117,7 @@ impl PresenceClient {
         let body =
             self.mapper
                 .build_clear(&request_id, &self.device_id, sequence, reason, clock.now())?;
-        self.perform(RequestPlan { request_id, body }, clock)
+        self.perform(RequestPlan { request_id, body })
     }
 
     /// best-effort 清除：受限超时（睡眠/锁屏/关机路径，先到者赢）。
@@ -144,7 +132,7 @@ impl PresenceClient {
         let body =
             self.mapper
                 .build_clear(&request_id, &self.device_id, sequence, reason, clock.now())?;
-        self.perform_bounded(RequestPlan { request_id, body }, clock, timeout_ms)
+        self.perform_bounded(RequestPlan { request_id, body }, timeout_ms)
     }
 
     fn request_for(&self, plan: &RequestPlan) -> HttpRequest {
@@ -174,18 +162,13 @@ impl PresenceClient {
     }
 
     /// 单发送槽 + 单次幂等重试（macOS 版 performWithSingleRetry 语义矩阵）。
-    fn perform(
-        &self,
-        plan: RequestPlan,
-        _clock: &dyn Clock,
-    ) -> Result<MutationResponse, PresenceError> {
-        self.perform_bounded(plan, _clock, 10_000)
+    fn perform(&self, plan: RequestPlan) -> Result<MutationResponse, PresenceError> {
+        self.perform_bounded(plan, 10_000)
     }
 
     fn perform_bounded(
         &self,
         plan: RequestPlan,
-        _clock: &dyn Clock,
         timeout_ms: u64,
     ) -> Result<MutationResponse, PresenceError> {
         let _slot = self.send_slot.lock().unwrap();
@@ -387,10 +370,6 @@ mod tests {
             "https://core.example.com".into(),
             DEVICE.into(),
             "token-1".into(),
-            CapabilityFlags {
-                supports_media_artwork: false,
-                supports_media_playback_links: false,
-            },
         )
     }
 

@@ -3,7 +3,7 @@
 
 use super::SystemEvent;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::Sender;
 use windows_sys::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::System::RemoteDesktop::{
@@ -18,17 +18,10 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 const WM_POWERBROADCAST: u32 = 0x0218;
 const WM_WTSSESSION_CHANGE: u32 = 0x02B1;
 const HWND_MESSAGE: isize = -3;
+/// message-only 窗口类名 "YCMonitor"（NUL 结尾）。
 const CLASS_NAME: &[u16] = &[
-    b'Y' as u16,
-    b'C' as u16,
-    b'M' as u16,
-    b'o' as u16,
-    b'n' as u16,
-    b'i' as u16,
-    b't' as u16,
-    b'o' as u16,
-    b'r' as u16,
-    0,
+    'Y' as u16, 'C' as u16, 'M' as u16, 'o' as u16, 'n' as u16, 'i' as u16, 't' as u16, 'o' as u16,
+    'r' as u16, 0,
 ];
 
 struct EventContext {
@@ -39,6 +32,15 @@ thread_local! {
     static CONTEXT: std::cell::RefCell<Option<EventContext>> = const { std::cell::RefCell::new(None) };
 }
 
+/// 向协调器转发系统事件（线程上下文未就绪时静默丢弃）。
+fn notify(event: SystemEvent) {
+    CONTEXT.with(|c| {
+        if let Some(ctx) = c.borrow().as_ref() {
+            let _ = ctx.tx.send(event);
+        }
+    });
+}
+
 unsafe extern "system" fn wnd_proc(
     hwnd: HWND,
     msg: u32,
@@ -47,36 +49,21 @@ unsafe extern "system" fn wnd_proc(
 ) -> LRESULT {
     if msg == WM_POWERBROADCAST {
         if wparam as u32 == PBT_APMSUSPEND {
-            CONTEXT.with(|c| {
-                if let Some(ctx) = c.borrow().as_ref() {
-                    let _ = ctx.tx.send(SystemEvent::SleepOrLock);
-                }
-            });
+            notify(SystemEvent::SleepOrLock);
         } else if wparam as u32 == PBT_APMRESUMEAUTOMATIC {
-            CONTEXT.with(|c| {
-                if let Some(ctx) = c.borrow().as_ref() {
-                    let _ = ctx.tx.send(SystemEvent::Wake);
-                }
-            });
+            notify(SystemEvent::Wake);
         }
         return 0;
     }
     if msg == WM_WTSSESSION_CHANGE {
         match wparam as u32 {
-            WTS_SESSION_LOCK => CONTEXT.with(|c| {
-                if let Some(ctx) = c.borrow().as_ref() {
-                    let _ = ctx.tx.send(SystemEvent::SleepOrLock);
-                }
-            }),
-            WTS_SESSION_UNLOCK => CONTEXT.with(|c| {
-                if let Some(ctx) = c.borrow().as_ref() {
-                    let _ = ctx.tx.send(SystemEvent::Wake);
-                }
-            }),
+            WTS_SESSION_LOCK => notify(SystemEvent::SleepOrLock),
+            WTS_SESSION_UNLOCK => notify(SystemEvent::Wake),
             _ => {}
         }
         return 0;
     }
+    // SAFETY: 未处理的消息必须交给默认窗口过程；参数原样透传。
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
@@ -93,6 +80,8 @@ impl SystemEvents {
             .name("system-events".into())
             .spawn(move || {
                 CONTEXT.with(|c| *c.borrow_mut() = Some(EventContext { tx: tx.clone() }));
+                // SAFETY: 类名/窗口名以 NUL 结尾；message-only 窗口的注册与
+                // 创建都在本线程，消息循环随后在本线程运行。
                 unsafe {
                     let wc = WNDCLASSW {
                         style: 0,
@@ -126,7 +115,7 @@ impl SystemEvents {
                     if hwnd.is_null() {
                         return;
                     }
-                    let _ = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION as u32);
+                    let _ = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
                     // WinRT 网络监听（需要套间）
                     if windows::Win32::System::Com::CoInitializeEx(
                         None,

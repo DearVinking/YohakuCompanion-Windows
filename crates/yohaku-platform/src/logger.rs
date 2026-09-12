@@ -2,7 +2,7 @@
 
 use log::{LevelFilter, Log, Metadata, Record};
 use std::io::Write;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 const MAX_FILE_BYTES: u64 = 1024 * 1024;
@@ -21,14 +21,14 @@ impl Log for FileLogger {
         if !self.enabled(record.metadata()) {
             return;
         }
-        let mut path = self.path.lock().unwrap();
-        if let Ok(meta) = std::fs::metadata(&*path) {
-            if meta.len() > MAX_FILE_BYTES {
-                for i in (1..MAX_ROTATIONS).rev() {
-                    let _ = std::fs::rename(rotated_name(&path, i), rotated_name(&path, i + 1));
-                }
-                let _ = std::fs::rename(&*path, rotated_name(&path, 1));
+        let path = self.path.lock().unwrap();
+        if let Ok(meta) = std::fs::metadata(&*path)
+            && meta.len() > MAX_FILE_BYTES
+        {
+            for i in (1..MAX_ROTATIONS).rev() {
+                let _ = std::fs::rename(rotated_name(&path, i), rotated_name(&path, i + 1));
             }
+            let _ = std::fs::rename(&*path, rotated_name(&path, 1));
         }
         if let Ok(mut file) = std::fs::OpenOptions::new()
             .create(true)
@@ -48,7 +48,7 @@ impl Log for FileLogger {
     fn flush(&self) {}
 }
 
-fn rotated_name(base: &PathBuf, index: usize) -> PathBuf {
+fn rotated_name(base: &Path, index: usize) -> PathBuf {
     let mut name = base.file_name().unwrap_or_default().to_os_string();
     name.push(format!(".{index}"));
     base.with_file_name(name)

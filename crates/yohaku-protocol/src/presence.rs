@@ -379,14 +379,14 @@ impl Mapper {
         if !meaningful(&media.title) && !meaningful(&media.artist) {
             return Err(MapperError::IdentityMissing);
         }
-        let duration_ms = match media.duration_seconds {
-            Some(v) => Some(seconds_to_ms(v, "durationMs")?),
-            None => None,
-        };
-        let mut position_ms = match media.position_seconds {
-            Some(v) => Some(seconds_to_ms(v, "positionMs")?),
-            None => None,
-        };
+        let duration_ms = media
+            .duration_seconds
+            .map(|v| seconds_to_ms(v, "durationMs"))
+            .transpose()?;
+        let mut position_ms = media
+            .position_seconds
+            .map(|v| seconds_to_ms(v, "positionMs"))
+            .transpose()?;
         if let (Some(duration), Some(position)) = (duration_ms, position_ms) {
             position_ms = Some(position.min(duration));
         }
@@ -451,6 +451,15 @@ impl Mapper {
         })
     }
 
+    /// 排序序列化 + payload 上限检查（presence 与 clear 共用）。
+    fn encode(&self, wire: &impl Serialize) -> Result<String, MapperError> {
+        let body = to_sorted_json(wire).map_err(|_| MapperError::FieldInvalid("serialize"))?;
+        if body.len() > self.limits.presence_payload_bytes as usize {
+            return Err(MapperError::PayloadTooLarge);
+        }
+        Ok(body)
+    }
+
     pub fn build_presence(&self, input: &PresenceSnapshotInput) -> Result<String, MapperError> {
         let meta = self.build_meta(
             &input.request_id,
@@ -466,21 +475,18 @@ impl Mapper {
             lease: LeaseWire {
                 ttl_seconds: self.clamp_lease(input.lease_ttl_seconds),
             },
-            application: match &input.application {
-                Some(app) => Some(self.build_application(app)?),
-                None => None,
-            },
-            media: match &input.media {
-                Some(m) => Some(self.build_media(m)?),
-                None => None,
-            },
+            application: input
+                .application
+                .as_ref()
+                .map(|app| self.build_application(app))
+                .transpose()?,
+            media: input
+                .media
+                .as_ref()
+                .map(|m| self.build_media(m))
+                .transpose()?,
         };
-        let wire = RequestWire { meta, data };
-        let body = to_sorted_json(&wire).map_err(|_| MapperError::FieldInvalid("serialize"))?;
-        if body.len() > self.limits.presence_payload_bytes as usize {
-            return Err(MapperError::PayloadTooLarge);
-        }
-        Ok(body)
+        self.encode(&RequestWire { meta, data })
     }
 
     pub fn build_clear(
@@ -492,17 +498,12 @@ impl Mapper {
         observed_at: DateTime<Utc>,
     ) -> Result<String, MapperError> {
         let meta = self.build_meta(request_id, device_id, sequence, observed_at)?;
-        let wire = RequestWire {
+        self.encode(&RequestWire {
             meta,
             data: ClearDataWire {
                 reason: reason.wire(),
             },
-        };
-        let body = to_sorted_json(&wire).map_err(|_| MapperError::FieldInvalid("serialize"))?;
-        if body.len() > self.limits.presence_payload_bytes as usize {
-            return Err(MapperError::PayloadTooLarge);
-        }
-        Ok(body)
+        })
     }
 }
 

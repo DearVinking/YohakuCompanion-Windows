@@ -3,8 +3,11 @@
 use crate::MAX_SAFE_INTEGER;
 use crate::ids::is_valid_identifier;
 use crate::json::take_nullable;
+use crate::json::take_optional;
 use crate::json::take_required;
 use crate::presence::{PRESENCE_SCHEMA, PRESENCE_SCHEMA_VERSION};
+
+type JsonMap = serde_json::Map<String, serde_json::Value>;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ResponseError {
@@ -26,9 +29,7 @@ pub struct ResponseMeta {
     pub server_time: String,
 }
 
-fn parse_meta(
-    meta: &serde_json::Map<String, serde_json::Value>,
-) -> Result<ResponseMeta, ResponseError> {
+fn parse_meta(meta: &JsonMap) -> Result<ResponseMeta, ResponseError> {
     let schema: String = take_required(meta, "schema").map_err(ResponseError::Malformed)?;
     let schema_version: i64 =
         take_required(meta, "schemaVersion").map_err(ResponseError::Malformed)?;
@@ -50,13 +51,19 @@ fn parse_meta(
     })
 }
 
-fn envelope(body: &[u8]) -> Result<serde_json::Map<String, serde_json::Value>, ResponseError> {
+fn envelope(body: &[u8]) -> Result<JsonMap, ResponseError> {
     let value: serde_json::Value =
         serde_json::from_slice(body).map_err(|e| ResponseError::Malformed(e.to_string()))?;
     value
         .as_object()
         .cloned()
         .ok_or_else(|| ResponseError::Malformed("not an object".into()))
+}
+
+/// 两个解析入口共用的 `meta` 投影步骤。
+fn meta_of(root: &JsonMap) -> Result<ResponseMeta, ResponseError> {
+    let meta = take_required::<JsonMap>(root, "meta").map_err(ResponseError::Malformed)?;
+    parse_meta(&meta)
 }
 
 // ---------- Capabilities ----------
@@ -82,14 +89,10 @@ pub struct CapabilitiesData {
 
 pub fn parse_capabilities(body: &[u8]) -> Result<(ResponseMeta, CapabilitiesData), ResponseError> {
     let root = envelope(body)?;
-    let meta_value = take_required::<serde_json::Map<String, serde_json::Value>>(&root, "meta")
-        .map_err(ResponseError::Malformed)?;
-    let meta = parse_meta(&meta_value)?;
-    let data = take_required::<serde_json::Map<String, serde_json::Value>>(&root, "data")
-        .map_err(ResponseError::Malformed)?;
+    let meta = meta_of(&root)?;
+    let data = take_required::<JsonMap>(&root, "data").map_err(ResponseError::Malformed)?;
     let features_map =
-        take_required::<serde_json::Map<String, serde_json::Value>>(&data, "features")
-            .map_err(ResponseError::Malformed)?;
+        take_required::<JsonMap>(&data, "features").map_err(ResponseError::Malformed)?;
     let features = FeatureSet {
         live_desk: take_required(&features_map, "liveDesk").map_err(ResponseError::Malformed)?,
         media_timeline: take_required(&features_map, "mediaTimeline")
@@ -102,8 +105,7 @@ pub fn parse_capabilities(body: &[u8]) -> Result<(ResponseMeta, CapabilitiesData
         media_playback_links: take_optional(&features_map, "mediaPlaybackLinks")
             .map_err(ResponseError::Malformed)?,
     };
-    let limits_map = take_required::<serde_json::Map<String, serde_json::Value>>(&data, "limits")
-        .map_err(ResponseError::Malformed)?;
+    let limits_map = take_required::<JsonMap>(&data, "limits").map_err(ResponseError::Malformed)?;
     let limits = crate::capabilities::CapabilityLimits::from_map(&limits_map)
         .ok_or(ResponseError::Malformed("limits".into()))?;
     Ok((
@@ -121,8 +123,6 @@ pub fn parse_capabilities(body: &[u8]) -> Result<(ResponseMeta, CapabilitiesData
     ))
 }
 
-use crate::json::take_optional;
-
 // ---------- Mutation ----------
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -138,14 +138,11 @@ pub fn parse_mutation(
     expected_request_id: &str,
 ) -> Result<MutationResponse, ResponseError> {
     let root = envelope(body)?;
-    let meta_value = take_required::<serde_json::Map<String, serde_json::Value>>(&root, "meta")
-        .map_err(ResponseError::Malformed)?;
-    let meta = parse_meta(&meta_value)?;
+    let meta = meta_of(&root)?;
     if meta.request_id != expected_request_id {
         return Err(ResponseError::InvalidIdentifier("meta.requestId echo"));
     }
-    let data = take_required::<serde_json::Map<String, serde_json::Value>>(&root, "data")
-        .map_err(ResponseError::Malformed)?;
+    let data = take_required::<JsonMap>(&root, "data").map_err(ResponseError::Malformed)?;
     let accepted_sequence: i64 =
         take_required(&data, "acceptedSequence").map_err(ResponseError::Malformed)?;
     if !(0..=MAX_SAFE_INTEGER).contains(&accepted_sequence) {
@@ -172,7 +169,7 @@ pub struct ServerError {
 /// 宽松解码：无法解析为错误信封时返回 None（调用方按状态码兜底）。
 pub fn parse_error(body: &[u8]) -> Option<ServerError> {
     let root = envelope(body).ok()?;
-    let error = take_required::<serde_json::Map<String, serde_json::Value>>(&root, "error").ok()?;
+    let error = take_required::<JsonMap>(&root, "error").ok()?;
     Some(ServerError {
         code: take_required(&error, "code").ok()?,
         message: take_required(&error, "message").ok()?,

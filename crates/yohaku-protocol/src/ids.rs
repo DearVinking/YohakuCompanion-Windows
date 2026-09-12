@@ -4,23 +4,16 @@ const UUID_LEN: usize = 36;
 const CROCKFORD_LEN: usize = 26;
 const CROCKFORD_ALPHABET: &[u8] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 
-fn is_ascii_hex_lower_or_upper(c: u8) -> bool {
-    c.is_ascii_digit() || (b'a'..=b'f').contains(&c) || (b'A'..=b'F').contains(&c)
-}
-
 pub fn is_valid_uuid(s: &str) -> bool {
     let b = s.as_bytes();
-    if b.len() != UUID_LEN {
-        return false;
-    }
-    for &i in &[8, 13, 18, 23] {
-        if b[i] != b'-' {
-            return false;
-        }
-    }
-    b.iter()
-        .enumerate()
-        .all(|(i, &c)| matches!(i, 8 | 13 | 18 | 23) || is_ascii_hex_lower_or_upper(c))
+    b.len() == UUID_LEN
+        && b.iter().enumerate().all(|(i, &c)| {
+            if matches!(i, 8 | 13 | 18 | 23) {
+                c == b'-'
+            } else {
+                c.is_ascii_hexdigit()
+            }
+        })
 }
 
 pub fn is_valid_identifier(s: &str) -> bool {

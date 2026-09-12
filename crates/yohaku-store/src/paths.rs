@@ -16,9 +16,7 @@ pub fn dir_name() -> &'static str {
 pub fn data_dir() -> PathBuf {
     let base = dirs::config_dir()
         .unwrap_or_else(|| std::env::temp_dir().join("yohaku-companion-fallback"));
-    let dir = base.join(dir_name());
-    let _ = std::fs::create_dir_all(&dir);
-    dir
+    data_dir_under(&base)
 }
 
 pub fn data_dir_under(base: &std::path::Path) -> PathBuf {

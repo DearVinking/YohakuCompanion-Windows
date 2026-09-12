@@ -1,18 +1,20 @@
 //! 壳层接线：组装 store/app/platform，为协调器桥接平台捕获源，
 //! 并把状态暴露给命令层。
 
-use std::path::PathBuf;
-use std::sync::mpsc::Sender;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::Manager;
 
 use yohaku_app::capture::{RawApplicationFocus, RawMediaState};
 use yohaku_app::coordinator::{
-    AssetHosting, Coordinator, CoordinatorDeps, LiveDeskEvent, MediaLookup, PresenceSources,
-    S3AssetHosting, run,
+    Coordinator, CoordinatorDeps, LiveDeskEvent, MediaLookup, PresenceSources, S3AssetHosting, run,
 };
-use yohaku_app::ports::{Clock, HttpRequest, HttpResponse, HttpTransport, TransportError};
+use yohaku_app::error::ApiError;
+use yohaku_app::ports::{
+    Clock, HttpRequest, HttpResponse, HttpTransport, SystemClock, TransportError,
+};
 use yohaku_app::privacy::PrivacyPipeline;
 use yohaku_app::state::LiveDeskStatus;
 use yohaku_platform::foreground::{FocusSample, ForegroundMonitor, SharedSample};
@@ -21,7 +23,7 @@ use yohaku_platform::media::MediaMonitor;
 use yohaku_platform::system::{SystemEvent, SystemEvents};
 use yohaku_store::history::HistoryStore;
 use yohaku_store::privacy::PrivacyRules;
-use yohaku_store::settings::Settings;
+use yohaku_store::settings::{Settings, SettingsPatch};
 use yohaku_store::{ConnectionStore, SecretStore, StoreResult};
 
 /// ureq 阻塞传输（超时按请求覆盖）。
@@ -77,14 +79,6 @@ impl HttpTransport for UreqTransport {
             .read_to_vec()
             .map_err(|e| TransportError(e.to_string()))?;
         Ok(HttpResponse { status, body })
-    }
-}
-
-struct FixedClock;
-
-impl Clock for FixedClock {
-    fn now(&self) -> chrono::DateTime<chrono::Utc> {
-        chrono::Utc::now()
     }
 }
 
@@ -183,6 +177,19 @@ pub struct App {
     pub preview_seen_at: Mutex<Option<Instant>>,
 }
 
+/// 从磁盘装载 S3 配置；secret 从受保护存储合并（不落盘）。
+fn read_s3_config(data_dir: &Path, secrets: &dyn SecretStore) -> yohaku_app::s3::S3Config {
+    let mut cfg: yohaku_app::s3::S3Config =
+        yohaku_store::json_io::read_json_opt(&data_dir.join("s3.json"))
+            .ok()
+            .flatten()
+            .unwrap_or_default();
+    if let Ok(Some(secret)) = secrets.get(yohaku_store::S3_SECRET_KEY) {
+        cfg.secret_key = String::from_utf8_lossy(&secret).to_string();
+    }
+    cfg
+}
+
 impl App {
     pub fn preview_fresh(&self) -> bool {
         self.preview_seen_at
@@ -196,16 +203,21 @@ impl App {
         let _ = self.events.send(event);
     }
 
+    /// 暂停/恢复共享：更新设置、落盘并通知协调器（命令层与托盘共用）。
+    pub fn set_paused(&self, paused: bool) -> Result<Settings, ApiError> {
+        let settings = self.pipeline.update_settings(&SettingsPatch {
+            pause_sharing: Some(paused),
+            ..Default::default()
+        });
+        settings
+            .save(&self.data_dir)
+            .map_err(|e| ApiError::new("STORE", e.to_string()))?;
+        self.send_event(LiveDeskEvent::SettingsChanged);
+        Ok(settings)
+    }
+
     pub fn load_s3_config(&self) -> yohaku_app::s3::S3Config {
-        let mut cfg: yohaku_app::s3::S3Config =
-            yohaku_store::json_io::read_json_opt(&self.data_dir.join("s3.json"))
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-        if let Ok(Some(secret)) = self.secrets.get(yohaku_store::S3_SECRET_KEY) {
-            cfg.secret_key = String::from_utf8_lossy(&secret).to_string();
-        }
-        cfg
+        read_s3_config(&self.data_dir, self.secrets.as_ref())
     }
 
     pub fn save_s3_config(&self, cfg: &yohaku_app::s3::S3Config) -> StoreResult<()> {
@@ -235,22 +247,11 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let pipeline = Arc::new(PrivacyPipeline::new(settings, rules));
 
     let http: Arc<dyn HttpTransport> = Arc::new(UreqTransport::new());
-    let clock: Arc<dyn Clock> = Arc::new(FixedClock);
+    let clock: Arc<dyn Clock> = Arc::new(SystemClock);
     let assets = Arc::new(S3AssetHosting::new(http.clone(), clock.clone()));
     // 启动即装载 S3 配置（若有）
-    let s3_dir = data_dir.clone();
-    let s3_cfg: Option<yohaku_app::s3::S3Config> = {
-        let mut cfg: yohaku_app::s3::S3Config =
-            yohaku_store::json_io::read_json_opt(&s3_dir.join("s3.json"))
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-        if let Ok(Some(secret)) = secrets.get(yohaku_store::S3_SECRET_KEY) {
-            cfg.secret_key = String::from_utf8_lossy(&secret).to_string();
-        }
-        cfg.is_configured().then_some(cfg)
-    };
-    assets.set_config(s3_cfg);
+    let s3_cfg = read_s3_config(&data_dir, secrets.as_ref());
+    assets.set_config(s3_cfg.is_configured().then_some(s3_cfg));
 
     let (event_tx, event_rx) = std::sync::mpsc::channel::<LiveDeskEvent>();
 
@@ -268,50 +269,22 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     SystemEvents::spawn(system_tx);
 
     // 平台通知 → 协调器事件桥接（三条阻塞转发线程）
-    {
-        let tx = event_tx.clone();
-        std::thread::Builder::new()
-            .name("focus-forward".into())
-            .spawn(move || {
-                while let Ok(()) = focus_rx.recv() {
-                    if tx.send(LiveDeskEvent::AppChanged).is_err() {
-                        break;
-                    }
-                }
-            })
-            .map_err(|e| e.to_string())?;
-    }
-    {
-        let tx = event_tx.clone();
-        std::thread::Builder::new()
-            .name("media-forward".into())
-            .spawn(move || {
-                while let Ok(()) = media_rx.recv() {
-                    if tx.send(LiveDeskEvent::MediaSemanticChanged).is_err() {
-                        break;
-                    }
-                }
-            })
-            .map_err(|e| e.to_string())?;
-    }
-    {
-        let tx = event_tx.clone();
-        std::thread::Builder::new()
-            .name("system-forward".into())
-            .spawn(move || {
-                while let Ok(event) = system_rx.recv() {
-                    let mapped = match event {
-                        SystemEvent::SleepOrLock => LiveDeskEvent::SleepOrLock,
-                        SystemEvent::Wake => LiveDeskEvent::Wake,
-                        SystemEvent::NetworkUp => LiveDeskEvent::NetworkUp,
-                    };
-                    if tx.send(mapped).is_err() {
-                        break;
-                    }
-                }
-            })
-            .map_err(|e| e.to_string())?;
-    }
+    spawn_forwarder("focus-forward", focus_rx, event_tx.clone(), |_| {
+        LiveDeskEvent::AppChanged
+    })?;
+    spawn_forwarder("media-forward", media_rx, event_tx.clone(), |_| {
+        LiveDeskEvent::MediaSemanticChanged
+    })?;
+    spawn_forwarder(
+        "system-forward",
+        system_rx,
+        event_tx.clone(),
+        |event| match event {
+            SystemEvent::SleepOrLock => LiveDeskEvent::SleepOrLock,
+            SystemEvent::Wake => LiveDeskEvent::Wake,
+            SystemEvent::NetworkUp => LiveDeskEvent::NetworkUp,
+        },
+    )?;
     if let Some(monitor) = &media_monitor {
         monitor.set_preferred_players(pipeline.settings().preferred_players.clone());
     }
@@ -371,6 +344,34 @@ pub fn setup(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
         preview_seen_at: Mutex::new(None),
     });
     Ok(())
+}
+
+/// 阻塞转发线程：`rx` 的每条消息经 `map` 变换后发往协调器（发送端关闭即退出）。
+fn spawn_forwarder<T: Send + 'static>(
+    name: &str,
+    rx: Receiver<T>,
+    tx: Sender<LiveDeskEvent>,
+    map: impl Fn(T) -> LiveDeskEvent + Send + 'static,
+) -> Result<(), String> {
+    std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            while let Ok(event) = rx.recv() {
+                if tx.send(map(event)).is_err() {
+                    break;
+                }
+            }
+        })
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// 退出流程：通知协调器执行 best-effort 清除，等待后退出进程（命令层与托盘共用）。
+pub fn request_quit(app: &tauri::AppHandle, events: &Sender<LiveDeskEvent>) {
+    let _ = events.send(LiveDeskEvent::Shutdown);
+    // 给 best-effort 清除留出时间（上限 500ms + 余量）
+    std::thread::sleep(std::time::Duration::from_millis(700));
+    app.exit(0);
 }
 
 pub fn sync_autostart(app: &tauri::AppHandle, enable: bool) {

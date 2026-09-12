@@ -7,7 +7,7 @@ use crate::capture::{
     RawApplicationFocus, RawMediaState, protocol_application_part, protocol_media_part,
 };
 use crate::ports::{Clock, HttpRequest, HttpTransport, MonotonicClock, TransportError};
-use crate::presence_client::{CapabilityFlags, PresenceClient, PresenceError};
+use crate::presence_client::{PresenceClient, PresenceError};
 use crate::privacy::PrivacyPipeline;
 use crate::s3::{S3Config, effective_base_path, media_artwork_target, public_base_url, sign_put};
 use crate::state::{CoordinatorState, LiveDeskStatus};
@@ -230,7 +230,8 @@ enum Runtime {
         retry_at_ms: u64,
     },
     Running {
-        client: PresenceClient,
+        // Box 压平变体体积差（client 约 280 字节，其余变体 ≤ 8 字节）
+        client: Box<PresenceClient>,
         config: NegotiatedConfig,
     },
     Suspended,
@@ -311,16 +312,11 @@ impl Coordinator {
                 if self.refresh_requested {
                     Duration::from_millis(self.rate_limit_wait_ms(config))
                 } else {
-                    Some(self.heartbeat_at_ms.unwrap_or_else(|| {
+                    let at_ms = self.heartbeat_at_ms.unwrap_or_else(|| {
                         self.deps.monotonic.now_millis()
                             + config.heartbeat_seconds(DEFAULT_LEASE_REQUEST) as u64 * 1000
-                    }))
-                    .map(|at_ms| {
-                        Duration::from_millis(
-                            at_ms.saturating_sub(self.deps.monotonic.now_millis()),
-                        )
-                    })
-                    .unwrap_or(Duration::from_secs(15))
+                    });
+                    Duration::from_millis(at_ms.saturating_sub(self.deps.monotonic.now_millis()))
                 }
             }
         }
@@ -377,16 +373,16 @@ impl Coordinator {
                 }
             }
             Runtime::Running { .. } => {
-                if let Some(event) = &event {
-                    match event {
+                if let Some(event) = &event
+                    && matches!(
+                        event,
                         LiveDeskEvent::AppChanged
-                        | LiveDeskEvent::MediaSemanticChanged
-                        | LiveDeskEvent::PolicyChanged
-                        | LiveDeskEvent::NetworkUp => {
-                            self.refresh_requested = true;
-                        }
-                        _ => {}
-                    }
+                            | LiveDeskEvent::MediaSemanticChanged
+                            | LiveDeskEvent::PolicyChanged
+                            | LiveDeskEvent::NetworkUp
+                    )
+                {
+                    self.refresh_requested = true;
                 }
                 let heartbeat_due = self
                     .heartbeat_at_ms
@@ -524,12 +520,11 @@ impl Coordinator {
             base_url.clone(),
             device_id.clone(),
             token,
-            CapabilityFlags {
-                supports_media_artwork: config.supports_media_artwork,
-                supports_media_playback_links: config.supports_media_playback_links,
-            },
         );
-        self.runtime = Runtime::Running { client, config };
+        self.runtime = Runtime::Running {
+            client: Box::new(client),
+            config,
+        };
         self.set_status(|s| {
             s.state = CoordinatorState::Active;
             s.last_error_code = None;
@@ -677,17 +672,13 @@ impl Coordinator {
                 None,
                 Some(format!("accepted seq {}", mutation.accepted_sequence)),
             ),
-            Err(PresenceError::SchemaRejected) => {
-                (SyncState::Failed, Some("SCHEMA_REJECTED".into()), None)
+            Err(e) => {
+                let code = match e {
+                    PresenceError::Server { code, .. } => code.clone(),
+                    other => fixed_error_code(other).to_string(),
+                };
+                (SyncState::Failed, Some(code), None)
             }
-            Err(PresenceError::PayloadTooLarge) => {
-                (SyncState::Failed, Some("PAYLOAD_TOO_LARGE".into()), None)
-            }
-            Err(PresenceError::Transport(_)) => (SyncState::Failed, Some("TRANSPORT".into()), None),
-            Err(PresenceError::Server { code, .. }) => {
-                (SyncState::Failed, Some(code.clone()), None)
-            }
-            Err(PresenceError::Decode(_)) => (SyncState::Failed, Some("DECODE".into()), None),
         };
         let event = SyncEvent {
             id: uuid::Uuid::new_v4().to_string(),
@@ -705,7 +696,7 @@ impl Coordinator {
     fn apply_send_outcome(
         &mut self,
         outcome: SendOutcome,
-        client: PresenceClient,
+        client: Box<PresenceClient>,
         config: NegotiatedConfig,
     ) -> Runtime {
         match outcome {

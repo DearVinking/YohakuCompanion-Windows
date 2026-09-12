@@ -19,22 +19,12 @@ pub fn create(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
             "pause" => {
                 let state = app.state::<App>();
                 let paused = !state.pipeline.settings().pause_sharing;
-                let settings =
-                    state
-                        .pipeline
-                        .update_settings(&yohaku_store::settings::SettingsPatch {
-                            pause_sharing: Some(paused),
-                            ..Default::default()
-                        });
-                let _ = settings.save(&state.data_dir);
-                state.send_event(LiveDeskEvent::SettingsChanged);
+                let _ = state.set_paused(paused);
                 sync_menu(app);
             }
             "quit" => {
                 let state = app.state::<App>();
-                let _ = state.events.send(LiveDeskEvent::Shutdown);
-                std::thread::sleep(std::time::Duration::from_millis(700));
-                app.exit(0);
+                crate::wiring::request_quit(app, &state.events);
             }
             _ => {}
         })
@@ -60,8 +50,6 @@ pub fn create(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 pub struct TrayHandle {
     pub tray: Mutex<TrayIcon>,
 }
-
-use yohaku_app::coordinator::LiveDeskEvent;
 
 fn build_menu(
     app: &tauri::AppHandle,
@@ -110,9 +98,9 @@ pub fn sync_menu(app: &tauri::AppHandle) {
         yohaku_app::state::CoordinatorState::Suspended => "已暂停",
         yohaku_app::state::CoordinatorState::Disabled => "未启用",
     };
-    if let Ok(menu) = build_menu(app, Some(text), paused) {
-        if let Ok(mut tray) = handle.tray.lock() {
-            let _ = tray.set_menu(Some(menu));
-        }
+    if let Ok(menu) = build_menu(app, Some(text), paused)
+        && let Ok(tray) = handle.tray.lock()
+    {
+        let _ = tray.set_menu(Some(menu));
     }
 }

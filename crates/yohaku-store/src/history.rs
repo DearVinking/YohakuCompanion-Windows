@@ -48,7 +48,7 @@ pub struct HistoryStore {
 
 impl Default for HistoryStore {
     fn default() -> Self {
-        HistoryStore { cap: HISTORY_CAP }
+        Self::new(HISTORY_CAP)
     }
 }
 
@@ -68,10 +68,8 @@ impl HistoryStore {
         }
         let mut events = self.list(dir)?;
         events.push(event);
-        if events.len() > self.cap {
-            let drop_count = events.len() - self.cap;
-            events.drain(0..drop_count);
-        }
+        let excess = events.len().saturating_sub(self.cap);
+        events.drain(..excess);
         write_json(&dir.join(HISTORY_FILE), &events)
     }
 
