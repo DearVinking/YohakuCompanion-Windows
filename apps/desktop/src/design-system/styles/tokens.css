@@ -1,0 +1,209 @@
+@import "tailwindcss";
+@import "./utilities.css";
+
+:root {
+  color-scheme: light dark;
+  --label: rgba(0, 0, 0, 0.847);
+  --secondary: rgba(0, 0, 0, 0.498);
+  --disabled-label: rgba(0, 0, 0, 0.424);
+  --win-bg: #ffffff;
+  --content-bg: #ffffff;
+  --sidebar-bg: rgba(246, 246, 246, 0.3);
+  --btn-bg: #ffffff;
+  --btn-shadow: 0 1px 4px rgba(0, 0, 0, 0.14), 0 0 1px rgba(0, 0, 0, 0.1);
+  --control-border: rgba(0, 0, 0, 0.098);
+  --focus-border: #7fb3f9;
+  --focus-ring: rgba(0, 103, 244, 0.498);
+  --rarity-5: #ffcc00;
+  --rarity-4: #cb30e0;
+  --rarity-3: #0068da;
+  --rarity-unknown: #8e8e93;
+  --pity-good: #0088ff;
+  --pity-warn: #ffcc00;
+  --on-warning: #332512;
+  --pity-danger: #ff383c;
+  --accent: #0088ff;
+  --accent-soft: rgba(0, 136, 255, 0.16);
+  --danger: #ff383c;
+  --danger-disabled: rgba(255, 56, 60, 0.5);
+  --danger-soft: rgba(255, 56, 60, 0.16);
+  --success: #34c759;
+  --success-soft: rgba(52, 199, 89, 0.18);
+  --gold: #a66b00;
+  --gold-soft: rgba(255, 204, 0, 0.18);
+  --link: #0068da;
+  --scrollbar-handle: rgba(0, 0, 0, 0.32);
+  --scrollbar-handle-hover: rgba(0, 0, 0, 0.48);
+  --scrollbar-handle-active: rgba(0, 0, 0, 0.6);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --label: rgba(255, 255, 255, 0.847);
+    --secondary: rgba(255, 255, 255, 0.549);
+    --disabled-label: rgba(255, 255, 255, 0.424);
+    --win-bg: #1e1e22;
+    --content-bg: #1e1e22;
+    --sidebar-bg: rgba(45, 45, 45, 0.3);
+    --btn-bg: rgba(255, 255, 255, 0.12);
+    --btn-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+    --control-border: rgba(255, 255, 255, 0.098);
+    --focus-border: #1c638e;
+    --focus-ring: rgba(26, 169, 255, 0.498);
+    --rarity-5: #ffd600;
+    --rarity-4: #db34f2;
+    --rarity-3: #419cff;
+    --rarity-unknown: #98989d;
+    --pity-good: #0091ff;
+    --pity-warn: #ffd600;
+    --pity-danger: #ff4245;
+    --accent: #0091ff;
+    --accent-soft: rgba(0, 145, 255, 0.16);
+    --danger: #ff4245;
+    --danger-disabled: rgba(255, 66, 69, 0.5);
+    --danger-soft: rgba(255, 66, 69, 0.16);
+    --success: #30d158;
+    --success-soft: rgba(48, 209, 88, 0.18);
+    --gold: #ffd600;
+    --gold-soft: rgba(255, 214, 0, 0.2);
+    --link: #419cff;
+    --scrollbar-handle: rgba(255, 255, 255, 0.34);
+    --scrollbar-handle-hover: rgba(255, 255, 255, 0.52);
+    --scrollbar-handle-active: rgba(255, 255, 255, 0.68);
+  }
+}
+
+body.backdrop {
+  --win-bg: rgba(255, 255, 255, 0.42);
+  --content-bg: rgba(255, 255, 255, 0.55);
+  --sidebar-bg: rgba(255, 255, 255, 0.5);
+  --btn-bg: rgba(255, 255, 255, 0.55);
+}
+
+@media (prefers-color-scheme: dark) {
+  body.backdrop {
+    --win-bg: rgba(30, 30, 34, 0.45);
+    --content-bg: rgba(30, 30, 34, 0.55);
+    --sidebar-bg: rgba(50, 50, 56, 0.5);
+    --btn-bg: rgba(255, 255, 255, 0.1);
+  }
+}
+
+@theme {
+  --font-sans:
+    "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+
+@theme inline {
+  --color-label: var(--label);
+  --color-secondary: var(--secondary);
+  --color-disabled-label: var(--disabled-label);
+  --color-control-border: var(--control-border);
+  --color-focus-border: var(--focus-border);
+  --color-focus-ring: var(--focus-ring);
+  --color-rarity-5: var(--rarity-5);
+  --color-rarity-4: var(--rarity-4);
+  --color-rarity-3: var(--rarity-3);
+  --color-rarity-unknown: var(--rarity-unknown);
+  --color-pity-good: var(--pity-good);
+  --color-pity-warn: var(--pity-warn);
+  --color-on-warning: var(--on-warning);
+  --color-pity-danger: var(--pity-danger);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-disabled: var(--danger-disabled);
+  --color-danger-soft: var(--danger-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-link: var(--link);
+}
+
+@layer base {
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-size: 13px;
+    line-height: 1.4;
+    letter-spacing: 0;
+    color: var(--color-label);
+    user-select: none;
+  }
+
+  input,
+  textarea {
+    user-select: text;
+  }
+
+  #app {
+    height: 100%;
+  }
+}
+
+.os-theme-nteye {
+  box-sizing: border-box;
+  --os-size: 8px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 2px;
+  --os-track-border-radius: 999px;
+  --os-handle-border-radius: 999px;
+  --os-handle-bg: var(--scrollbar-handle);
+  --os-handle-bg-hover: var(--scrollbar-handle-hover);
+  --os-handle-bg-active: var(--scrollbar-handle-active);
+  --os-handle-min-size: 28px;
+  --os-handle-interactive-area-offset: 4px;
+}
+
+.os-theme-nteye.os-scrollbar-auto-hide-hidden {
+  transition-duration: 0s;
+}
+
+.modal-enter-active,
+.modal-leave-active {
+  transition: opacity 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.modal-enter-active > [role="dialog"],
+.modal-leave-active > [role="dialog"] {
+  transform-origin: center;
+  transform: translateZ(0);
+  transition:
+    opacity 200ms cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+.modal-enter-from > [role="dialog"],
+.modal-leave-to > [role="dialog"] {
+  opacity: 0;
+  transform: translate3d(0, 8px, 0);
+}
+
+@media (min-width: 768px) {
+  .modal-enter-active,
+  .modal-leave-active,
+  .modal-enter-active > [role="dialog"],
+  .modal-leave-active > [role="dialog"] {
+    transition-duration: 300ms;
+    transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .modal-enter-from > [role="dialog"],
+  .modal-leave-to > [role="dialog"] {
+    transform: translate3d(0, 5px, 0) scale(0.95);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-enter-active,
+  .modal-leave-active,
+  .modal-enter-active > [role="dialog"],
+  .modal-leave-active > [role="dialog"] {
+    transition: none;
+  }
+}

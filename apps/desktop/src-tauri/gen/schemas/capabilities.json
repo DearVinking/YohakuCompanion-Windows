@@ -1,0 +1,1 @@
+{"main":{"identifier":"main","description":"Allow the local main window to use the desktop application's existing commands.","local":true,"windows":["main"],"permissions":["allow-desktop-commands"]}}

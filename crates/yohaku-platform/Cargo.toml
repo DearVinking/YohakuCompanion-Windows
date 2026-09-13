@@ -1,0 +1,23 @@
+[package]
+name = "yohaku-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+yohaku-store = { path = "../yohaku-store" }
+atomic-write-file.workspace = true
+chrono.workspace = true
+log.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows.workspace = true
+windows-future.workspace = true
+windows-sys.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -1,0 +1,178 @@
+use std::collections::BTreeSet;
+use std::fmt;
+
+pub const MAX_URL_BYTES: usize = 2048;
+pub const MAX_ACTIVITY_KEY: usize = 64;
+
+pub fn unicode_scalar_len(s: &str) -> usize {
+    s.chars().count()
+}
+
+pub fn valid_activity_key(s: &str) -> bool {
+    s.len() <= MAX_ACTIVITY_KEY
+        && s.starts_with(|c: char| c.is_ascii_lowercase())
+        && s.chars()
+            .skip(1)
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '-')
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UrlRejection {
+    NotHttps,
+    HasUserinfo,
+    HostNotAllowed,
+    InvalidQuery,
+    TooLong,
+}
+
+impl fmt::Display for UrlRejection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let text = match self {
+            UrlRejection::NotHttps => "not https",
+            UrlRejection::HasUserinfo => "userinfo not allowed",
+            UrlRejection::HostNotAllowed => "host not allowed",
+            UrlRejection::InvalidQuery => "query not allowed",
+            UrlRejection::TooLong => "url too long",
+        };
+        f.write_str(text)
+    }
+}
+
+fn strip_https_prefix(url: &str) -> Result<&str, UrlRejection> {
+    if url.len() > MAX_URL_BYTES {
+        return Err(UrlRejection::TooLong);
+    }
+    if url.bytes().any(|b| b <= 0x20 || b == 0x7f || b == b'\\') {
+        return Err(UrlRejection::NotHttps);
+    }
+    url.strip_prefix("https://").ok_or(UrlRejection::NotHttps)
+}
+
+fn authority(rest: &str) -> Result<&str, UrlRejection> {
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let authority = &rest[..end];
+    if authority.contains('@') {
+        return Err(UrlRejection::HasUserinfo);
+    }
+    Ok(authority)
+}
+
+pub fn valid_public_https_url(
+    url: &str,
+    allowed_hosts: &BTreeSet<String>,
+) -> Result<(), UrlRejection> {
+    let rest = strip_https_prefix(url)?;
+    let authority = authority(rest)?;
+    let host = match authority.rsplit_once(':') {
+        Some((host, port)) if !port.is_empty() && port.bytes().all(|b| b.is_ascii_digit()) => host,
+        _ => authority,
+    };
+    if !allowed_hosts.contains(host) {
+        return Err(UrlRejection::HostNotAllowed);
+    }
+    Ok(())
+}
+
+pub fn valid_artwork_url(url: &str) -> Result<(), UrlRejection> {
+    let rest = strip_https_prefix(url)?;
+    if rest.contains('#') {
+        return Err(UrlRejection::NotHttps);
+    }
+    let authority = authority(rest)?;
+    let path_and_query = &rest[authority.len()..];
+    let Some((_path, query)) = path_and_query.split_once('?') else {
+        return Err(UrlRejection::InvalidQuery);
+    };
+    if query.is_empty() || query.contains('&') {
+        return Err(UrlRejection::InvalidQuery);
+    }
+    let Some((key, value)) = query.split_once('=') else {
+        return Err(UrlRejection::InvalidQuery);
+    };
+    let value_is_content_hash = value.len() == 64
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+    if key != "v" || !value_is_content_hash {
+        return Err(UrlRejection::InvalidQuery);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn hosts() -> BTreeSet<String> {
+        BTreeSet::from(["assets.example.com".to_string()])
+    }
+
+    #[test]
+    fn scalar_len_counts_chars_not_bytes() {
+        assert_eq!(unicode_scalar_len("编辑中"), 3);
+        assert_eq!(unicode_scalar_len("ab"), 2);
+    }
+
+    #[test]
+    fn activity_keys() {
+        assert!(valid_activity_key("com.apple.music"));
+        assert!(valid_activity_key("a"));
+        assert!(!valid_activity_key("1abc"));
+        assert!(!valid_activity_key("A-b"));
+        assert!(!valid_activity_key(""));
+        assert!(!valid_activity_key(&"a".repeat(65)));
+        assert!(valid_activity_key(&"a".repeat(64)));
+    }
+
+    #[test]
+    fn url_accepts_whitelisted_https() {
+        let h = hosts();
+        assert!(
+            valid_public_https_url("https://assets.example.com/icons/ab.png?v=deadbeef", &h)
+                .is_ok()
+        );
+        assert!(valid_public_https_url("https://assets.example.com/", &h).is_ok());
+        assert!(valid_public_https_url("https://assets.example.com:443/a.png", &h).is_ok());
+    }
+
+    #[test]
+    fn url_rejections() {
+        let h = hosts();
+        assert_eq!(
+            valid_public_https_url("http://assets.example.com/a.png", &h),
+            Err(UrlRejection::NotHttps)
+        );
+        assert_eq!(
+            valid_public_https_url("https://user:pass@assets.example.com/a.png", &h),
+            Err(UrlRejection::HasUserinfo)
+        );
+        assert_eq!(
+            valid_public_https_url("https://evil.example.com/a.png", &h),
+            Err(UrlRejection::HostNotAllowed)
+        );
+        assert_eq!(
+            valid_public_https_url(
+                &format!("https://assets.example.com/{}", "a".repeat(2100)),
+                &h
+            ),
+            Err(UrlRejection::TooLong)
+        );
+        assert!(
+            valid_public_https_url("https://evil.example.com\\@assets.example.com/", &h).is_err()
+        );
+        assert!(valid_public_https_url("https://assets.example.com/a b.png", &h).is_err());
+    }
+
+    #[test]
+    fn artwork_urls() {
+        let hash = "ab".repeat(32);
+        let ok = format!("https://assets.example.com/m/current.png?v={hash}");
+        assert!(valid_artwork_url(&ok).is_ok());
+        assert!(valid_artwork_url("https://assets.example.com/m.png").is_err());
+        assert!(valid_artwork_url(&format!("https://a.com/m.png?v={hash}&x=1")).is_err());
+        assert!(valid_artwork_url("https://a.com/m.png?v=AB".to_string().as_str()).is_err());
+        let upper = format!("https://a.com/m.png?v={}", hash.to_uppercase());
+        assert!(valid_artwork_url(&upper).is_err());
+        assert!(valid_artwork_url(&format!("https://a.com/m.png#x?v={hash}")).is_err());
+    }
+}

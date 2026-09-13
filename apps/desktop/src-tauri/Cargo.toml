@@ -1,0 +1,39 @@
+[package]
+name = "yohaku-companion"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "yohaku_companion_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "YohakuCompanion"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build.workspace = true
+
+[dependencies]
+yohaku-app = { path = "../../../crates/yohaku-app" }
+yohaku-protocol = { path = "../../../crates/yohaku-protocol" }
+yohaku-store = { path = "../../../crates/yohaku-store" }
+yohaku-platform = { path = "../../../crates/yohaku-platform" }
+chrono.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+specta.workspace = true
+tauri.workspace = true
+tauri-plugin-autostart.workspace = true
+tauri-plugin-single-instance.workspace = true
+tauri-specta.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+specta-typescript.workspace = true
+tempfile.workspace = true

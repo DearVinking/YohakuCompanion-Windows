@@ -1,0 +1,17 @@
+[[permission]]
+identifier = "allow-desktop-commands"
+description = "The existing settings, privacy, connection, preview and quit commands."
+commands.allow = [
+    "get_settings",
+    "update_settings",
+    "get_privacy_rules",
+    "update_privacy_rules",
+    "get_connection_status",
+    "start_pairing",
+    "remove_pairing",
+    "enable_live_desk",
+    "disable_live_desk",
+    "get_preview",
+    "set_paused",
+    "quit_app",
+]

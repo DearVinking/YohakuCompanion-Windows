@@ -1,0 +1,200 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-windows:
+    name: Build and Release Windows
+    runs-on: windows-latest
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/target
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Verify tag matches app version
+        id: verify
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          $tagName = $env:TAG_NAME
+          $conf = Get-Content -LiteralPath "apps/desktop/src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json
+          $version = $conf.version
+          $expected = "v$version"
+          if ($tagName -cne $expected) {
+              throw "Tag $tagName does not match app version $expected (tauri.conf.json). Update the tag or the app version."
+          }
+          "tagName=$tagName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772
+        with:
+          toolchain: 1.98.1
+          components: rustfmt, clippy
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          workspaces: . -> target
+
+      - name: Desktop install
+        working-directory: apps/desktop
+        run: pnpm install --frozen-lockfile
+
+      - name: Check Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Lint Rust
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test Rust workspace and bindings
+        run: cargo test --workspace --locked
+
+      - name: Test desktop frontend
+        working-directory: apps/desktop
+        run: pnpm test
+
+      - name: Check desktop types and unused code
+        working-directory: apps/desktop
+        run: pnpm exec vue-tsc --noEmit --noUnusedLocals --noUnusedParameters
+
+      - name: Build desktop app
+        working-directory: apps/desktop
+        run: pnpm exec tauri build --target x86_64-pc-windows-msvc
+
+      - name: Collect release assets
+        id: assets
+        shell: pwsh
+        env:
+          APP_VERSION: ${{ steps.verify.outputs.version }}
+        run: |
+          $version = $env:APP_VERSION
+          $releaseDir = Join-Path $env:CARGO_TARGET_DIR "x86_64-pc-windows-msvc/release"
+          $installerDir = Join-Path $releaseDir "bundle/nsis"
+          $expectedInstallerName = "YohakuCompanion_${version}_x64-setup.exe"
+
+          $installers = @(Get-ChildItem -LiteralPath $installerDir -File -Filter "*-setup.exe")
+          if ($installers.Count -ne 1 -or $installers[0].Name -cne $expectedInstallerName) {
+              throw "Expected exactly one NSIS installer named $expectedInstallerName in $installerDir."
+          }
+          $installer = $installers[0]
+
+          $binaryPath = Join-Path $releaseDir "YohakuCompanion.exe"
+          if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
+              throw "YohakuCompanion.exe not found under $releaseDir."
+          }
+
+          $stage = "release-assets"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          $installerAssetName = $installer.Name
+          Copy-Item -LiteralPath $installer.FullName -Destination "$stage/$installerAssetName"
+
+          $portableAssetName = "YohakuCompanion_${version}_x64-portable.zip"
+          Compress-Archive -LiteralPath $binaryPath -DestinationPath "$stage/$portableAssetName"
+
+          "installerPath=$stage/$installerAssetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "installerAssetName=$installerAssetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "portablePath=$stage/$portableAssetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "portableAssetName=$portableAssetName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build release notes
+        shell: bash
+        env:
+          TAG_NAME: ${{ steps.verify.outputs.tagName }}
+          INSTALLER_ASSET_NAME: ${{ steps.assets.outputs.installerAssetName }}
+          PORTABLE_ASSET_NAME: ${{ steps.assets.outputs.portableAssetName }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+
+          previous_tag="$(git describe --tags --abbrev=0 "${TAG_NAME}^" 2>/dev/null || true)"
+          if [[ -n "$previous_tag" ]]; then
+            range="${previous_tag}..${TAG_NAME}"
+          else
+            range="$TAG_NAME"
+          fi
+
+          {
+            echo "### ${TAG_NAME} 更新内容"
+            commits="$(git log --pretty=format:'* %s (%an)' "$range" || true)"
+            if [[ -n "$commits" ]]; then
+              echo "$commits"
+            else
+              echo "* 本次没有更新记录。"
+            fi
+            echo
+            echo "### 安装与运行"
+            echo "* Windows 安装包：[${INSTALLER_ASSET_NAME}](https://github.com/${RELEASE_REPOSITORY}/releases/download/${TAG_NAME}/${INSTALLER_ASSET_NAME})"
+            echo "  * 下载后双击安装。"
+            echo "* Windows 便携版：[${PORTABLE_ASSET_NAME}](https://github.com/${RELEASE_REPOSITORY}/releases/download/${TAG_NAME}/${PORTABLE_ASSET_NAME})"
+            echo "  * 解压后运行 \`YohakuCompanion.exe\`。"
+          } > release-notes.md
+
+      - name: Resolve release flags
+        id: flags
+        shell: bash
+        env:
+          TAG_NAME: ${{ steps.verify.outputs.tagName }}
+        run: |
+          set -euo pipefail
+
+          prerelease_flag=""
+          if [[ "$TAG_NAME" =~ -[0-9A-Za-z] ]]; then
+            prerelease_flag="--prerelease"
+          fi
+
+          echo "prereleaseFlag=${prerelease_flag}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.verify.outputs.tagName }}
+          INSTALLER_PATH: ${{ steps.assets.outputs.installerPath }}
+          PORTABLE_PATH: ${{ steps.assets.outputs.portablePath }}
+          PRERELEASE_FLAG: ${{ steps.flags.outputs.prereleaseFlag }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG_NAME" --repo "$RELEASE_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release already exists: $TAG_NAME" >&2
+            exit 1
+          fi
+
+          gh release create "$TAG_NAME" \
+            "$INSTALLER_PATH" \
+            "$PORTABLE_PATH" \
+            --repo "$RELEASE_REPOSITORY" \
+            --title "$TAG_NAME" \
+            --notes-file release-notes.md \
+            --verify-tag \
+            --latest \
+            $PRERELEASE_FLAG
